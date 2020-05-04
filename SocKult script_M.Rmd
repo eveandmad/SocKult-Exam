@@ -1,5 +1,5 @@
 ---
-title: "Simulation for exam"
+title: "Meta-analysis"
 author: "Matilde"
 date: "4/26/2020"
 output: html_document
@@ -8,332 +8,83 @@ editor_options:
 ---
 
 
-```{r Simulating data}
-pacman::p_load(tidyverse, brms)
-
-
-
-set.seed <- 1981 # Defining a seed so the results are always the same
-samplesize <- 300 # Defining the amount of datapoints
-n <- 1000 # Defining number of simulations
-MaxScore <- 8 # Defining max rating
-MinScore <- 1 # Defining min rating
-
-## Regression to the mean?
-
-d <- read_csv("~/Dropbox (Personal)/My courses/2020 - SocialCultural/PracticalExercises/SocialConformityData_CogSci18.csv") %>%
-  mutate(
-    Feedback = ifelse(OtherRating==0, NA, Feedback)
-  )
-
-m <- lmer(SecondRating ~ 1 + FirstRating + (1  | ID), 
-          subset(d, is.na(Feedback)), REML=F)
-summary(m)
-
-ggplot(subset(d, is.na(Feedback)), aes(FirstRating,SecondRating)) + 
-  geom_point() +
-  geom_smooth(method=lm)
-
-Regression2Mean <- 0.7 # 1st to 2nd 0.668444
-## Defining the correlation coefficients
-Conformity <- 0.5 # Defining the true correlation of feedback and change
-
-SimulateData <- function(samplesize,
-                         Regression2Mean,
-                         Conformity,
-                         MinScore = 1,
-                         MaxScore = 8){
-  
-  FirstRating <- round(runif(samplesize, MinScore, MaxScore), 0)
-  Feedback <- round(runif(samplesize, -3, 3), 0)
-  SecondRating <- round(Regression2Mean * FirstRating + Conformity * Feedback, 0)
-  SecondRating <- ifelse(SecondRating > MaxScore, MaxScore,ifelse(SecondRating < MinScore, MinScore, SecondRating))
-  Change <- SecondRating - FirstRating
-    
-  d1 <- data.frame(FirstRating, Feedback, SecondRating, Change) %>% 
-    subset(FirstRating + Feedback < MaxScore & FirstRating + Feedback > MinScore) %>%
-    mutate(
-      FirstRatingC <- FirstRating - 4.5,
-      SecondRatingC <- SecondRating - 4.5,
-    )
-  return(d1)
-}
-
-CalculateCorrelation <- function(simulations = n, 
-                                 samplesize,
-                                 Regression2Mean,
-                                 Conformity, 
-                                 MinScore = 1, 
-                                 MaxScore = 8){
-  for (i in c(1:n)){
-    
-    d <- SimulateData(samplesize, Regression2Mean, Conformity, MinScore, MaxScore)
-    
-    if (i == 1) {
-      RegressionEstimate <- cor(d$FirstRating, d$SecondRating)
-      ConformityEstimate <- cor(d$Feedback, d$Change)
-    } else {
-      RegressionEstimate <- c(RegressionEstimate, cor(d$FirstRating, d$SecondRating))
-      ConformityEstimate <- c(ConformityEstimate, cor(d$Feedback, d$Change))
-    }
-  }
-  Estimates <- data.frame(
-    ConformityEstimate = ifelse(is.na(ConformityEstimate),0,ConformityEstimate), 
-    RegressionEstimate = RegressionEstimate, 
-    RegressionTrue = Regression2Mean,
-    ConformityTrue = Conformity
-  )
-  return(Estimates)
-}
-
-
-
-ConformityEstimateR1C0 <- CalculateCorrelation(n, 
-                                               samplesize, 
-                                               Regression2Mean = 1,
-                                               Conformity = 0)
-ConformityEstimateR1C1 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 1,
-                                              Conformity = 0.1)
-ConformityEstimateR1C2 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 1,
-                                              Conformity = 0.2)
-ConformityEstimateR1C3 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 1,
-                                              Conformity = 0.3)
-ConformityEstimateR1C4 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 1,
-                                              Conformity = 0.4)
-ConformityEstimateR1C5 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 1,
-                                              Conformity = 0.5)
-
-ConformityEstimateR8C0 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0)
-ConformityEstimateR8C1 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0.1)
-ConformityEstimateR8C2 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0.2)
-ConformityEstimateR8C3 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0.3)
-ConformityEstimateR8C4 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0.4)
-ConformityEstimateR8C5 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.8,
-                                              Conformity = 0.5)
-
-ConformityEstimateR6C0 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0)
-ConformityEstimateR6C1 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0.1)
-ConformityEstimateR6C2 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0.2)
-ConformityEstimateR6C3 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0.3)
-ConformityEstimateR6C4 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0.4)
-ConformityEstimateR6C5 <- CalculateCorrelation(n, samplesize, 
-                                              Regression2Mean = 0.6,
-                                              Conformity = 0.5)
-
-
-
-ConformityEstimate <- rbind(ConformityEstimateR1C0,
-                            ConformityEstimateR1C1,
-                            ConformityEstimateR1C2,
-                            ConformityEstimateR1C3,
-                            ConformityEstimateR1C4,
-                            ConformityEstimateR1C5,
-                            ConformityEstimateR8C0,
-                            ConformityEstimateR8C1,
-                            ConformityEstimateR8C2,
-                            ConformityEstimateR8C3,
-                            ConformityEstimateR8C4,
-                            ConformityEstimateR8C5,
-                            ConformityEstimateR6C0,
-                            ConformityEstimateR6C1,
-                            ConformityEstimateR6C2,
-                            ConformityEstimateR6C3,
-                            ConformityEstimateR6C4,
-                            ConformityEstimateR6C5)
-
-
-Reference <- ConformityEstimate %>%
-  group_by(RegressionTrue, ConformityTrue) %>%
-  summarise(
-    TrueRegression = mean(RegressionTrue),
-    EstimatedRegression = mean(RegressionTrue),
-    TrueConformity = mean(ConformityTrue),
-    EstimatedConformity = mean(ConformityEstimate))
-
-
-ggplot(ConformityEstimate, aes(ConformityEstimate)) +
-  geom_density() +
-  geom_vline(data = Reference, mapping = aes(xintercept = TrueConformity), color="red") +
-  geom_vline(data = Reference, mapping = aes(xintercept = EstimatedConformity), color="green") +
-  facet_grid(RegressionTrue ~ ConformityTrue) +
-  theme_classic()
-
-## Lots of bias. Can we reduce it via appropriate modeling?
-d0 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = 0, MinScore = 1, MaxScore = 8)
-d1 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .1, MinScore = 1, MaxScore = 8)
-d2 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .2, MinScore = 1, MaxScore = 8)
-d3 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .3, MinScore = 1, MaxScore = 8)
-d4 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .4, MinScore = 1, MaxScore = 8)
-d5 <- SimulateData(samplesize, Regression2Mean = .7, Conformity = .5, MinScore = 1, MaxScore = 8)
-
-Conformity_f1 <- bf(Change ~ 1 + Feedback)
-
-Conformity_f2 <- bf(Change ~ 1 + Feedback + FirstRating)
-
-Conformity_f3 <- bf(Feedback ~ 1 + FirstRating) + 
-                 bf(Change ~ 1 + Feedback + FirstRating) + set_rescor(F)
-
-get_prior(Conformity_f3,d,family=gaussian())
-
-prior <- c(
-  prior(normal(0,1), class = Intercept),
-  prior(normal(0,1), class = b),
-  prior(normal(0,1), class = sigma)
-)
-
-Conformity_m1_prior <- brm(
-  Conformity_f1,
-  d1,
-  family=gaussian(),
-  prior=prior,
-  sample_prior="only",
-  cores=1,
-  chains=2,
-  control = list(
-    adapt_delta=0.99,
-    max_treedepth = 20
-  )
-)
-
-pp_check(Conformity_m1_prior, nsamples=100)
-
-Conformity_m1_0 <- brm(
-  Conformity_f1,
-  d0,
-  family=gaussian(),
-  prior=prior,
-  sample_prior=T,
-  cores=1,
-  chains=2,
-  control = list(
-    adapt_delta=0.99,
-    max_treedepth = 20
-  )
-)
-
-Conformity_m1_1 <- update(Conformity_m1_0, newdata = d1)
-Conformity_m1_2 <- update(Conformity_m1_0, newdata = d2)
-Conformity_m1_3 <- update(Conformity_m1_0, newdata = d3)
-Conformity_m1_4 <- update(Conformity_m1_0, newdata = d4)
-Conformity_m1_5 <- update(Conformity_m1_0, newdata = d5)
-
-Conformity_m2_0 <- update(Conformity_m1_0, formula = Conformity_f2, newdata = d0)
-Conformity_m2_1 <- update(Conformity_m2_0, newdata = d1)
-Conformity_m2_2 <- update(Conformity_m2_0, newdata = d2)
-Conformity_m2_3 <- update(Conformity_m2_0, newdata = d3)
-Conformity_m2_4 <- update(Conformity_m2_0, newdata = d4)
-Conformity_m2_5 <- update(Conformity_m2_0, newdata = d5)
-
-prior_SEM <- c(
-  prior(normal(0,1), class = Intercept, resp = Change),
-  prior(normal(0,1), class = Intercept, resp = Feedback),
-  prior(normal(0,1), class = b, resp = Change),
-  prior(normal(0,1), class = b, resp = Feedback),
-  prior(normal(0,1), class = sigma, resp = Change),
-  prior(normal(0,1), class = sigma, resp = Feedback)
-)
-
-Conformity_m3_0 <- brm(
-  Conformity_f3,
-  d0,
-  family=gaussian(),
-  prior=prior_SEM,
-  sample_prior=T,
-  cores=1,
-  chains=2,
-  control = list(
-    adapt_delta=0.99,
-    max_treedepth = 20
-  )
-)
-
-Conformity_m3_1 <- update(Conformity_m3_0, newdata = d1)
-Conformity_m3_2 <- update(Conformity_m3_0, newdata = d2)
-Conformity_m3_3 <- update(Conformity_m3_0, newdata = d3)
-Conformity_m3_4 <- update(Conformity_m3_0, newdata = d4)
-Conformity_m3_5 <- update(Conformity_m3_0, newdata = d5)
-
-
-
-hypothesis(Conformity_m1_0,"Feedback > 0")
-hypothesis(Conformity_m1_1,"Feedback > 0")
-hypothesis(Conformity_m1_2,"Feedback > 0")
-hypothesis(Conformity_m1_3,"Feedback > 0")
-hypothesis(Conformity_m1_4,"Feedback > 0")
-hypothesis(Conformity_m1_5,"Feedback > 0")
-
-hypothesis(Conformity_m2_0,"Feedback > 0")
-hypothesis(Conformity_m2_1,"Feedback > 0")
-hypothesis(Conformity_m2_2,"Feedback > 0")
-hypothesis(Conformity_m2_3,"Feedback > 0")
-hypothesis(Conformity_m2_4,"Feedback > 0")
-hypothesis(Conformity_m2_5,"Feedback > 0")
-
-hypothesis(Conformity_m3_0,"Change_Feedback > 0")
-hypothesis(Conformity_m3_1,"Change_Feedback > 0")
-hypothesis(Conformity_m3_2,"Change_Feedback > 0")
-hypothesis(Conformity_m3_3,"Change_Feedback > 0")
-hypothesis(Conformity_m3_4,"Change_Feedback > 0")
-hypothesis(Conformity_m3_5,"Change_Feedback > 0")
-
-Conformity_m1_2 <- add_criterion(Conformity_m1_2, criterion = "loo")
-Conformity_m2_2 <- add_criterion(Conformity_m2_2, criterion = "loo")
-
-loo_compare(Conformity_m1_2,Conformity_m2_2)
-loo_model_weights(Conformity_m1_2,Conformity_m2_2)
-
-```
-
-## Now we are ready to actually analyze the data
-
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r loading data}
 
 pacman::p_load(tidyverse, 
+               meta,
+               esc, #effect size calcutater
                brms,
                bayesplot,
                viridis)
-d <- read_csv("~/Dropbox (Personal)/My courses/2020 - SocialCultural/PracticalExercises/SocialConformityData_CogSci18.csv") %>%
-  mutate(
-    Feedback = ifelse(OtherRating==0,NA,Feedback)
-  ) %>%
-  subset(!is.na(Feedback))
+
+
 ```
 
 ## Template
 
 ### Define hypotheses / Describe variables
+There is a cumulative and consistent effect of SC across studies
+Outcome = Hedge's g
+Predictor = mean effect size
+Varying effect = study ID
+
+### Data pre-processing
+Getting the effect sizes from the meta-data
+
+```{r}
+#Loading data
+MA_d <- read_delim(file = 'Ass4_MetaAnalysisData.tsv' , delim = '\t')
+
+#Modifying variables
+# MA_d <- MA_d %>%
+#   mutate(
+#     PitchVariabilityASD_Mean = as.numeric(PitchVariabilityASD_Mean),
+#     PitchVariabilityTD_Mean = as.numeric(PitchVariabilityTD_Mean),
+#     PitchVariabilityASD_SD = as.numeric(PitchVariabilityASD_SD),
+#     PitchVariabilityTD_SD = as.numeric(PitchVariabilityTD_SD)
+#   )
+
+#Only papers containing info
+MA_d <- MA_d %>% subset(!is.na(Paper))
+
+#Using esc() with mean and sd with Hedge's g as output
+?esc #looks like we have to make a loop
+esc_mean_sd(grp1m = AVERAGE_M_CHANGE, 
+            grp1sd = AVERAGE_SD_CHANGE,
+            grp1n = HC_SAMPLE_SIZE,
+            es.type = "g"
+            )
+
+#Renaming the effect size
+MA_d <- MA_d %>% 
+ rename(EffectSize = **)
+
+```
+
 
 ### Identify your model[s] 
-* likelihood function
-* formula
-* priors
+* likelihood function = mean centered effect size usually spanning between -2 and 2 so approximately Gaussian
+
+* priors = 
+    - Intercept = norm(0,1)
+    - SD = cauchy(0,0.3)/(0,0.5)
+```{r}
+priors <- c(prior(normal(0,1), class = Intercept),
+            prior(cauchy(0,0.5), class = sd))
+```
+
+
+* formula = EffectSize | StandardError ~ 1 + (1|StudyID)
+```{r}
+
+MA_f <- bf(EffectSize | se(StandardError) ~ 1 + (1 | StudyID)) 
+
+m.brm <- brm(TE|se(seTE) ~ 1 + (1|Author),
+             data = ThirdWave,
+             prior = priors,
+             iter = 4000)
+```
+
 
 ### Assess model quality
 * Predictive prior checks

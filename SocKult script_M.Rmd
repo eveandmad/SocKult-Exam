@@ -1,6 +1,7 @@
 ---
-title: "Assignment 5 - Example23333"
-author: "RF"
+=======
+title: "Simulation for exam"
+author: "Matilde"
 date: "4/26/2020"
 output: html_document
 editor_options: 

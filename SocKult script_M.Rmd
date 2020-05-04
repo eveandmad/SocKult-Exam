@@ -1,5 +1,10 @@
 ---
+<<<<<<< HEAD
 title: "Meta-analysis"
+=======
+=======
+title: "Simulation for exam"
+>>>>>>> 6de5edb882ff5082ea807721361c9fb900bb80c8
 author: "Matilde"
 date: "4/26/2020"
 output: html_document
@@ -10,6 +15,7 @@ editor_options:
 
 ```{r loading data}
 
+<<<<<<< HEAD
 pacman::p_load(tidyverse, 
                meta,
                esc, #effect size calcutater
@@ -17,6 +23,11 @@ pacman::p_load(tidyverse,
                bayesplot,
                viridis)
 
+=======
+#more stuff dddd
+#even more stuff
+#more stuff
+>>>>>>> 6de5edb882ff5082ea807721361c9fb900bb80c8
 
 ```
 

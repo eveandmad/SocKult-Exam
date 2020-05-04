@@ -1,4 +1,5 @@
 ---
+=======
 title: "Simulation for exam"
 author: "Matilde"
 date: "4/26/2020"
@@ -11,7 +12,9 @@ editor_options:
 ```{r Simulating data}
 pacman::p_load(tidyverse, brms)
 
-
+#more stuff dddd
+#even more stuff
+#more stuff
 
 set.seed <- 1981 # Defining a seed so the results are always the same
 samplesize <- 300 # Defining the amount of datapoints

@@ -1,5 +1,5 @@
 ---
-title: "Assignment 5 - Example"
+title: "Assignment 5 - Example23333"
 author: "RF"
 date: "4/26/2020"
 output: html_document
@@ -11,7 +11,8 @@ editor_options:
 ```{r Simulating data}
 pacman::p_load(tidyverse, brms)
 
-
+#more stuff dddd
+#even more stuff
 
 set.seed <- 1981 # Defining a seed so the results are always the same
 samplesize <- 300 # Defining the amount of datapoints

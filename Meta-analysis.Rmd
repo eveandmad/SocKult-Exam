@@ -1,0 +1,148 @@
+---
+title: "Meta-analysis"
+author: "Matilde"
+date: "4/5/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r loading data}
+
+
+pacman::p_load(tidyverse, 
+               meta,
+               esc, #effect size calcutater
+               brms,
+               bayesplot,
+               viridis)
+
+
+
+```
+
+## Template
+
+### Define hypotheses / Describe variables
+There is a cumulative and consistent effect of SC across studies
+Outcome = Hedge's g
+Predictor = mean effect size
+Varying effect = study ID
+
+### Data pre-processing
+Getting the effect sizes from the meta-data
+
+```{r}
+#Loading data
+MA_d <- read_delim(file = 'Ass4_MetaAnalysisData.tsv' , delim = '\t')
+
+#Modifying variables
+# MA_d <- MA_d %>%
+#   mutate(
+#     PitchVariabilityASD_Mean = as.numeric(PitchVariabilityASD_Mean),
+#     PitchVariabilityTD_Mean = as.numeric(PitchVariabilityTD_Mean),
+#     PitchVariabilityASD_SD = as.numeric(PitchVariabilityASD_SD),
+#     PitchVariabilityTD_SD = as.numeric(PitchVariabilityTD_SD)
+#   )
+
+#Only papers containing info
+MA_d <- MA_d %>% subset(!is.na(Paper))
+
+#Using esc() with mean and sd with Hedge's g as output
+?esc #looks like we have to make a loop
+esc_mean_sd(grp1m = AVERAGE_M_CHANGE, 
+            grp1sd = AVERAGE_SD_CHANGE,
+            grp1n = HC_SAMPLE_SIZE,
+            es.type = "g"
+            )
+
+#Renaming the effect size
+MA_d <- MA_d %>% 
+ rename(EffectSize = **)
+
+```
+
+
+### Identify your model[s] 
+* likelihood function = mean centered effect size usually spanning between -2 and 2 so approximately Gaussian
+
+* priors = 
+    - Intercept = norm(0,1)
+    - SD = cauchy(0,0.3)/(0,0.5)
+```{r}
+priors <- c(prior(normal(0,1), class = Intercept),
+            prior(cauchy(0,0.5), class = sd))
+```
+
+
+* formula = EffectSize | StandardError ~ 1 + (1|StudyID)
+```{r}
+
+MA_f <- bf(EffectSize | se(StandardError) ~ 1 + (1 | StudyID)) 
+
+m.brm <- brm(TE|se(seTE) ~ 1 + (1|Author),
+             data = ThirdWave,
+             prior = priors,
+             iter = 4000)
+```
+
+
+### Assess model quality
+* Predictive prior checks
+* Divergences / Rhat / ESS
+* Prior/Posterior learning (betas and sds)
+* Model comparison
+* Predictive posterior checks
+
+### Report results
+* Model comparison
+* Estimates and hypothesis testing
+* Make sure to deal cautiously with interactions (e.g. plot!)
+* Make sure to let the reader know the effects of the estimates on the outcome scale (if generalized linear model)
+
+
+### Define your hypotheses
+People will conform to peer feedback, that is, they will change according to the feedback.
+
+### Describe variables
+Outcome: 
+- Change (amount of change from the first rating)
+Predictors: 
+- Feedback (difference between first rating and peer feedback)
+- FirstRating (starting point, e.g. if early rating is 8, difficult to go up!)
+- ID: participant ID
+- FaceID: face ID
+
+### Identify your model[s] 
+* likelihood function: Change is numeric and goes from -6 to +6. Roughly gaussian?
+* formula: 
+* priors
+
+### Report
+
+### Methods and Materials
+#### Participants
+
+#### Experimental setup
+In order to investigate whether implicit social conformity can be found beyond regression to the mean, we relied on the XNXN paradigm. DESCRIPTION OF THE PARADIGM.
+
+#### Statistical analysis
+The underlying causal diagram was formalized using Directed Acyclical Graphs in Figure XX. The diagram indicates the necessity to control for BLABLA in order to avoid BLABLA.
+In order to confirm the adequacy of such approach we set up a simulation of the data generating process and compared N statistical models in their ability to infer the true parameters.
+The simulation involved BLABLA
+The results indicated that the model including BLABLA could indeed recover the true parameter with high precision. See plot/table.
+We therefore constructed two models on the actual data from the experiment, in order to assess whether Feedback had an effect on the second rating.
+As outcome we chose Change (between own ratings) modeled relying on a Gaussian likelihood. In the first model we only used First Rating as a predictor, in the second we added Feedback. Both models had a full varying structure of the predictors, varying both by Participant and by Face stimulus.
+As priors we chose blabla and checked with prior predictive checks whether the scale of the expected outcomes was correct (e.g. avoiding impossible change values, such as + 100). See figure S1.
+We tested for model quality in terms of no divergences, Rhat < 1.05, effective samples above 200, posterior predictive checks, visual inspection of the markov chains (raw and ranked) and assessment as to whether the posterior had learned from the data (contrast with prior). Model quality was ensured, details are reported in the appendix.
+We compared the two models using loo based stacking weights model comparison (REF).
+If the model including feedback was reliably better than the model without feedback, we would then more specifically test our hypothesis of implicit conformity relying on evidence ratio, that is, the amount of posterior samples compatible with our hypothesis divided the amount of incompatible posterior samples.
+The modeling was performed relying on R 4.0.0, RStudio blalb, tidyverse, brms, Stan (REFS)
+
+### Results
+
+Model comparison revealed that no model was clearly better than the other, suggesting caution when testing hypotheses on our theoretically motivated model, which includes Feedback.
+As expected we saw a credible positive effect of feedback on the change in rating beyond regression to the mean (B = 0.02, SE= 0.01, 95% CIs blabla, ER = 27.). See figure blabla. 
+The effect was small, but quite consistent across participants, see figure blabla.
+For full details on the model see Table S1.

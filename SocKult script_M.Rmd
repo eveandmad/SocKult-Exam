@@ -1,5 +1,5 @@
 ---
-title: "Assignment 5 - Example"
+title: "Simulation for exam"
 author: "RF"
 date: "4/26/2020"
 output: html_document

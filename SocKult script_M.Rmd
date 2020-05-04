@@ -1,6 +1,6 @@
 ---
 title: "Simulation for exam"
-author: "RF"
+author: "Matilde"
 date: "4/26/2020"
 output: html_document
 editor_options: 

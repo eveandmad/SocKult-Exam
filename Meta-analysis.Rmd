@@ -10,15 +10,26 @@ editor_options:
 
 ```{r loading data}
 
-
+install.packages(pacman)
 pacman::p_load(tidyverse, 
                meta,
-               esc, #effect size calcutater
                brms,
                bayesplot,
-               viridis)
+               tidybayes,
+               ggplot2,
+               ggridges,
+               glue,
+               stringr,
+               forcats,
+               readxl,
+               mice #for missing values
+)
 
+#Study overview
+MA_d <- read_excel("Matrix_MetaAnalysis.xlsx")
+rm(Matrix_MetaAnalysis)
 
+View(MA_d)
 
 ```
 
@@ -26,67 +37,14 @@ pacman::p_load(tidyverse,
 
 ### Define hypotheses / Describe variables
 There is a cumulative and consistent effect of SC across studies
-Outcome = Hedge's g
-Predictor = mean effect size
-Varying effect = study ID
-
-### Data pre-processing
-Getting the effect sizes from the meta-data
-
-```{r}
-#Loading data
-MA_d <- read_delim(file = 'Ass4_MetaAnalysisData.tsv' , delim = '\t')
-
-#Modifying variables
-# MA_d <- MA_d %>%
-#   mutate(
-#     PitchVariabilityASD_Mean = as.numeric(PitchVariabilityASD_Mean),
-#     PitchVariabilityTD_Mean = as.numeric(PitchVariabilityTD_Mean),
-#     PitchVariabilityASD_SD = as.numeric(PitchVariabilityASD_SD),
-#     PitchVariabilityTD_SD = as.numeric(PitchVariabilityTD_SD)
-#   )
-
-#Only papers containing info
-MA_d <- MA_d %>% subset(!is.na(Paper))
-
-#Using esc() with mean and sd with Hedge's g as output
-?esc #looks like we have to make a loop
-esc_mean_sd(grp1m = AVERAGE_M_CHANGE, 
-            grp1sd = AVERAGE_SD_CHANGE,
-            grp1n = HC_SAMPLE_SIZE,
-            es.type = "g"
-            )
-
-#Renaming the effect size
-MA_d <- MA_d %>% 
- rename(EffectSize = **)
-
-```
-
+Outcome: 
+- Change (amount of change from the first rating)
+Predictors: 
+- Feedback (difference between first rating and peer feedback)
+Varying effect:
+= study ID
 
 ### Identify your model[s] 
-* likelihood function = mean centered effect size usually spanning between -2 and 2 so approximately Gaussian
-
-* priors = 
-    - Intercept = norm(0,1)
-    - SD = cauchy(0,0.3)/(0,0.5)
-```{r}
-priors <- c(prior(normal(0,1), class = Intercept),
-            prior(cauchy(0,0.5), class = sd))
-```
-
-
-* formula = EffectSize | StandardError ~ 1 + (1|StudyID)
-```{r}
-
-MA_f <- bf(EffectSize | se(StandardError) ~ 1 + (1 | StudyID)) 
-
-m.brm <- brm(TE|se(seTE) ~ 1 + (1|Author),
-             data = ThirdWave,
-             prior = priors,
-             iter = 4000)
-```
-
 
 ### Assess model quality
 * Predictive prior checks
@@ -94,6 +52,78 @@ m.brm <- brm(TE|se(seTE) ~ 1 + (1|Author),
 * Prior/Posterior learning (betas and sds)
 * Model comparison
 * Predictive posterior checks
+
+```{r}
+MA_d <- read.csv("Matrix_MetaAnalysis - Sheet2.csv") 
+
+#impute missing values
+MA_d <- mice(MA_d, m = 5, print = FALSE)
+
+
+#formula
+MA_f <- bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Paper))
+
+#get prior
+get_prior(MA_f, data = MA_d, family = gaussian())
+
+#set priors
+MA_prior <- c(
+              prior(normal(0,0.5), class = Intercept), #We expect mean of change to lie between -1 and 1
+              prior(normal(0,0.25), class = b), #We expect slope for change according to feedback approximately between -.5 and .5
+              prior(cauchy(0,0.3), class = sd), #Tau = between study variance of change
+              prior(lkj(5), class = cor) #The true correlation between feedback and change
+)
+
+#prior predictive check
+MA_m0 <- brm(
+  MA_f,
+  data = MA_d,
+  family = gaussian(),
+  prior = MA_prior,
+  sample_prior = "only",
+  chains = 2,
+  cores = 2,
+  iter = 4000,
+  control = list(adapt_delta = 0.99)
+)
+
+pp_check(MA_m0, nsamples = 100)
+
+#running the model with the data
+MA_m1 <- brm(
+  MA_f,
+  data = MA_d,
+  family = gaussian(),
+  prior = MA_prior,
+  sample_prior = T,
+  iter = 4000,
+  control = list(adapt_delta = 0.99)
+)
+
+pairs(MA_m1)
+
+#Posterior predictive check
+pp_check(MA_m1, nsamples = 100)
+
+summary(MA_m1)
+
+#Chain checks
+
+```
+
+### Plotting results
+Forest plot
+```{r}
+ranef(MA_m1)
+
+study.draws <- spread_draws(MA_m1, r_Paper[Paper,], b_Feedback) %>% 
+  mutate(b_Feedback = r_Paper + b_Feedback)
+
+?spread_draws
+
+```
+
+
 
 ### Report results
 * Model comparison
@@ -104,20 +134,6 @@ m.brm <- brm(TE|se(seTE) ~ 1 + (1|Author),
 
 ### Define your hypotheses
 People will conform to peer feedback, that is, they will change according to the feedback.
-
-### Describe variables
-Outcome: 
-- Change (amount of change from the first rating)
-Predictors: 
-- Feedback (difference between first rating and peer feedback)
-- FirstRating (starting point, e.g. if early rating is 8, difficult to go up!)
-- ID: participant ID
-- FaceID: face ID
-
-### Identify your model[s] 
-* likelihood function: Change is numeric and goes from -6 to +6. Roughly gaussian?
-* formula: 
-* priors
 
 ### Report
 

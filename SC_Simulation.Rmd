@@ -9,7 +9,7 @@ editor_options:
 
 
 ```{r Simulating data}
-pacman::p_load(tidyverse, brms)
+pacman::p_load(tidyverse, brms, lme4)
 
 
 
@@ -21,15 +21,16 @@ MinScore <- 1 # Defining min rating
 
 ## Regression to the mean?
 
-d <- read_csv("~/Dropbox (Personal)/My courses/2020 - SocialCultural/PracticalExercises/SocialConformityData_CogSci18.csv") %>%
+d <- read_csv("SocialConformityData_CogSci18(1).csv") %>%
   mutate(
     Feedback = ifelse(OtherRating==0, NA, Feedback)
   )
-
+d2 <- subset(d, na.omit(Feedback))
+#What is the tendency to shrink values when there is no feedback 
 m <- lmer(SecondRating ~ 1 + FirstRating + (1  | ID), 
           subset(d, is.na(Feedback)), REML=F)
 summary(m)
-
+#Estimate of a correlation between first and second rating. 1 = perfectly correlated, the smaller it is the more regression to the mean
 ggplot(subset(d, is.na(Feedback)), aes(FirstRating,SecondRating)) + 
   geom_point() +
   geom_smooth(method=lm)
@@ -37,7 +38,7 @@ ggplot(subset(d, is.na(Feedback)), aes(FirstRating,SecondRating)) +
 Regression2Mean <- 0.7 # 1st to 2nd 0.668444
 ## Defining the correlation coefficients
 Conformity <- 0.5 # Defining the true correlation of feedback and change
-
+FirstRating
 SimulateData <- function(samplesize,
                          Regression2Mean,
                          Conformity,

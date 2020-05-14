@@ -9,8 +9,6 @@ editor_options:
 
 
 ```{r loading data}
-
-install.packages(pacman)
 pacman::p_load(tidyverse, 
                meta,
                brms,
@@ -21,13 +19,15 @@ pacman::p_load(tidyverse,
                glue,
                stringr,
                forcats,
+               viridis,
                readxl,
                mice #for missing values
 )
 
 #Study overview
-MA_d <- read_excel("Matrix_MetaAnalysis.xlsx")
-rm(Matrix_MetaAnalysis)
+MA_demo <- read_excel("Matrix_MetaAnalysis.xlsx") %>% 
+  select("Paper" = "ArticleID",
+         "Article")
 
 View(MA_d)
 
@@ -54,14 +54,35 @@ Varying effect:
 * Predictive posterior checks
 
 ```{r}
+#set seed
+set.seed(8)
+
+#Loading the data
 MA_d <- read.csv("Matrix_MetaAnalysis - Sheet2.csv") 
-
-#impute missing values
-MA_d <- mice(MA_d, m = 5, print = FALSE)
-
-
+summary(MA_d)
+#Selecting columns of interest
+MA_d <- MA_d %>% select(
+  -c("LowM", "SameM", "HighM", "SecondRatingM", "X")
+)
+#Merge to get names of studies
+MA_d <- merge(MA_demo, MA_d, by = "Paper")
+MA_d$Group.1 <- 1:25
+#Impute missing values
+NA_list <- mice(MA_d, m = 100, print = FALSE)
+NA_d <- complete(NA_list, action = "long")
+NA_a <-aggregate(NA_d[,5:7] , by = list(NA_d$.id),FUN= mean)
+MA_d <- merge(MA_d, NA_a, by = "Group.1")
+MA_d <- MA_d %>% 
+  select("Paper",
+         "Article",
+         "Change" = "Change.y",
+         "ChangeSD" = "ChangeSD.y",
+         "Feedback" = "Feedback.y"
+  )
+  
+view(MA_d)
 #formula
-MA_f <- bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Paper))
+MA_f <- bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
 
 #get prior
 get_prior(MA_f, data = MA_d, family = gaussian())
@@ -70,7 +91,7 @@ get_prior(MA_f, data = MA_d, family = gaussian())
 MA_prior <- c(
               prior(normal(0,0.5), class = Intercept), #We expect mean of change to lie between -1 and 1
               prior(normal(0,0.25), class = b), #We expect slope for change according to feedback approximately between -.5 and .5
-              prior(cauchy(0,0.3), class = sd), #Tau = between study variance of change
+              prior(cauchy(0,0.1), class = sd), #Tau = between study variance of change
               prior(lkj(5), class = cor) #The true correlation between feedback and change
 )
 
@@ -81,7 +102,7 @@ MA_m0 <- brm(
   family = gaussian(),
   prior = MA_prior,
   sample_prior = "only",
-  chains = 2,
+  chains = 4,
   cores = 2,
   iter = 4000,
   control = list(adapt_delta = 0.99)
@@ -96,6 +117,8 @@ MA_m1 <- brm(
   family = gaussian(),
   prior = MA_prior,
   sample_prior = T,
+  chains = 4,
+  cores = 2,
   iter = 4000,
   control = list(adapt_delta = 0.99)
 )
@@ -105,21 +128,74 @@ pairs(MA_m1)
 #Posterior predictive check
 pp_check(MA_m1, nsamples = 100)
 
+
+#Model summaries
 summary(MA_m1)
+posterior_summary(MA_m1, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
 
 #Chain checks
+color_scheme_set("viridis")
+mcmc_trace(MA_m1,
+           pars = c("b_Intercept", "b_Feedback", 
+           "sd_Article__Intercept", "sd_Article__Feedback",
+           "cor_Article__Intercept__Feedback")) + 
+  theme_classic()
 
+mcmc_rank <- mcmc_rank_overlay(MA_m1,
+                  pars = c("b_Intercept", "b_Feedback", 
+           "sd_Article__Intercept", "sd_Article__Feedback",
+           "cor_Article__Intercept__Feedback")) + theme_classic()
+
+MA_m1 %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
+
+#Hypothesis testing
+hypothesis(MA_m1,"Feedback > 0")
+hyp_plot <- plot(hypothesis(MA_m1,"Feedback > 0"))
+(hyp_plot [[1]]
+  +ggtitle("Effect of group opinion on second rating")
+  +xlab("Change in rating"))
 ```
 
 ### Plotting results
 Forest plot
 ```{r}
-ranef(MA_m1)
-
+#Code for forest plots
+#Creating dataframe with beta estimates for each paper
 study.draws <- spread_draws(MA_m1, r_Paper[Paper,], b_Feedback) %>% 
   mutate(b_Feedback = r_Paper + b_Feedback)
+study.draws$Paper <- as.factor(study.draws$Paper) 
+study.draws
 
-?spread_draws
+#Creating variable containing the pooled effect across studies
+pooled.effect.draws <- spread_draws(meta_model_post, b_Feedback) %>% 
+  mutate(Paper = "Pooled Effect")
+pooled.effect.draws
+
+#Binding individual and pooled estimates
+forest.data <- bind_rows(study.draws, pooled.effect.draws) %>% 
+   ungroup() %>%
+   mutate(Paper = reorder(Paper, b_Feedback))
+forest.data
+
+#Summarizing estimates to mean and quantiles
+forest.data.summary <- group_by(forest.data, Paper) %>% 
+  mean_qi(b_Feedback)
+forest.data.summary
+
+#Plot code
+ggplot(aes(b_Feedback, relevel(Paper, "Pooled Effect", after = Inf)), 
+       data = forest.data) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
+  geom_vline(xintercept = 0, color = "black", size = 1) +
+  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
+                      alpha = 0.8)+
+  geom_pointintervalh(data = forest.data.summary, size = 1) +
+  geom_text(data = mutate_if(forest.data.summary, is.numeric, round, 2),
+    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+  labs(x = "Standardized Mean Difference",
+       y = element_blank()) +
+  theme_minimal()
 
 ```
 

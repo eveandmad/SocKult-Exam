@@ -3,28 +3,535 @@ title: "Total script SocKult exam"
 author: "Eva SH"
 date: "5/13/2020"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+#Loading libraries
+pacman::p_load(tidyverse,dplyr,ggplot2,pastecs,ez,reshape2,stringr,lme4,stats,MuMIn,broom,emmeans,afex,lmerTest,scales,rstatix,ggpubr,readr,metafor,brms,tidybayes,ggridges,glue,forcats,mice,bayesplot)
 ```
 
-## R Markdown
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+META-ANALYSIS
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+#CALCULATING MISSING ESTIMATES
 
-```{r cars}
-summary(cars)
+Simonsen et al (2019) paper
+```{r}
+#Set working directory
+setwd("~/Desktop/SocKult exam")
+
+#Loading data
+simonsen_19 <- read_csv("~/Desktop/SocKult exam/Data from Nature study.csv")
+
+#Filter out patients (ID > 200) and relevant columns
+simonsen_19 <- simonsen_19 %>% subset(ID > 200) %>% select(c("ID","FaceID","FirstRating","GroupRating","Feedback","SecondRating","Change"))
+
+#Remove NA's
+simonsen_19 <- na.omit(simonsen_19)
+
+#Make new datasets for each type of feedback (low, same and high)
+low_simonsen_19 <- subset(simonsen_19, influenceLevel %in% c(-3,-2))
+same_simonsen_19 <- subset(simonsen_19, influenceLevel %in% c(0))
+high_simonsen_19 <- subset(simonsen_19, influenceLevel %in% c(3,2))
+
+#Mean and standard deviation of change for low, same and high group (estimates for meta-analysis)
+low_simonsen_19 %>% 
+  get_summary_stats(change,type = "mean_sd")
+same_simonsen_19 %>% 
+  get_summary_stats(change,type = "mean_sd")
+high_simonsen_19 %>% 
+  get_summary_stats(change,type = "mean_sd")
 ```
 
-## Including Plots
+Unpublished in-class data collection 
+```{r}
+#Loading data
+cogsci_18 <- read_csv("~/Desktop/SocKult exam/SocialConformityData_CogSci18.csv")
 
-You can also embed plots, for example:
+#Remove NA's
+cogsci_18 <- na.omit(cogsci_18)
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+#Insert NA's where GroupRating = 0 
+cogsci_18 <- cogsci_18 %>%
+  mutate(
+    Feedback = ifelse(GroupRating==0, NA, Feedback)
+  )
+
+#Mean of first rating
+cogsci_18 %>% 
+  get_summary_stats(FirstRating,type = "mean_sd")
+
+#Mean of second rating 
+cogsci_18 %>% 
+  get_summary_stats(SecondRating,type = "mean_sd")
+
+#Make new datasets for each type of feedback (low, same and high)
+low_cogsci_18 <- subset(cogsci_18, Feedback %in%  c(-3,-2))
+same_cogsci_18 <- subset(cogsci_18,Feedback  %in% c(0))
+high_cogsci_18 <- subset(cogsci_18, Feedback  %in%  c(3,2))
+
+#Mean and standard deviation of change for low, same and high group (estimates for meta-analysis)
+low_cogsci_18 %>% 
+  get_summary_stats(Change,type = "mean_sd")
+same_cogsci_18 %>% 
+  get_summary_stats(Change,type = "mean_sd")
+high_cogsci_18 %>% 
+  get_summary_stats(Change,type = "mean_sd")
+
+#Assess sample size 
+df_ID<-as.data.frame(unique(cogsci_18$ID))
+count(df_ID)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+#DEMOGRAPHY
+```{r}
+#Loading data
+meta_matrix <- read_csv("~/Desktop/SocKult exam/Meta-analysis matrix done.csv")
+
+#Remove empty rows in bottom
+meta_matrix <- meta_matrix[1:12,]
+
+#Exclude studies not included: Study 2, 11 and 12
+meta_matrix <- meta_matrix[-2,]
+meta_matrix <- meta_matrix[-(10:11),]
+
+#Calculating total healthy sample size 
+total_sample <- sum(meta_matrix$HC_SAMPLE_SIZE)
+
+#Mean and standard deviation of age
+meta_matrix %>% 
+  get_summary_stats(AGE_M,type = "mean_sd")
+
+#Mean and standard deviation of education
+meta_matrix %>% 
+  get_summary_stats(EDUCATION_M,type = "mean_sd")
+
+#Gender distribution 
+(100/total_sample)*sum(meta_matrix$FEMALE)
+
+#Median number of stimuli 
+median(meta_matrix$NUMBER_OF_STIMULI,na.rm = T) 
+```
+
+
+#IMPUTATION AND MODELLING
+
+Data imputation 
+```{r}
+#Loading data with estimates
+meta <- read_csv("~/Desktop/SocKult exam/MA analysis data.csv")
+
+#Exclude article column for imputation and save it separately
+article <- meta %>% select(Article)
+meta2 <- meta %>% select(-Article)
+  
+#Impute missing data 
+imp <- mice(meta2, m = 100, print = F)
+#Aggreting lists into dataframe
+imp1 <- complete(imp,action = "long")
+#Aggregating imputed measures into mean
+meta <- aggregate(imp1[,3:6] , by = list(imp1$.id),FUN = mean)
+
+#Insert article column again 
+meta <- cbind(meta, article)
+```
+
+Modelling 
+```{r}
+#Defining model
+meta_model <- 
+  bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
+
+#Get priors
+get_prior(formula = meta_model,
+          data = meta,
+          family = gaussian())
+
+#Define priors 
+prior = c(
+   prior(normal(0,0.25), class = b),
+   prior(lkj(5), class = cor),
+   prior(normal(0,0.5), class = Intercept),
+   prior(cauchy(0,0.1), class = sd))
+
+#Prior model
+meta_model_prior <- brm(
+  formula = meta_model,
+  data = meta,
+  family = gaussian(),
+  prior = prior,
+  sample_prior = "only",
+  iter = 6000,
+  chains = 4,
+  cores = 2,
+  control = list(adapt_delta = .99)
+  )
+
+#Model summary
+posterior_summary(meta_model_prior, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
+
+#Prior predictive check
+(plot_prior <- pp_check(meta_model_prior,nsamples = 100)+ggtitle("Prior predictive check")+xlab("Change in rating"))
+
+#Posterior model
+meta_model_post <- brm(
+  formula = meta_model,
+  data = meta,
+  family = gaussian(),
+  prior = prior,
+  sample_prior = T,
+  iter = 6000,
+  chains = 4,
+  cores = 2,
+  control = list(adapt_delta = .999)
+  )
+
+#Model summary
+posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
+
+#Posterior predictive check
+(plot_post <- pp_check(meta_model_post,nsamples = 100)+ggtitle("Posterior predictive check")+xlab("Change in rating"))
+
+#Hypothesis testing 
+hypothesis(meta_model_post1, "Feedback > 0")
+
+#Plot hypothesis against null hypothesis (prior)
+(hypothesis_plot <- plot(hypothesis(meta_model_post1, "Feedback > 0"))[[1]]+ggtitle("Effect of group opinion on second rating"))
+```
+
+
+
+#VISUALIZATIONS
+```{r}
+#BOXPLOT
+
+#Change according to feedback 
+ggboxplot(
+  meta, x = "Feedback", y = "Change",
+  color = "Feedback", palette = "jco")
+
+
+#TRACE PLOT
+
+#Loading color set
+color_scheme_set("viridis")
+
+#Overlay plot
+mcmc_rank <- mcmc_rank_overlay(meta_model_post,
+                  pars = c("b_Intercept", "b_Feedback", 
+           "sd_Article__Intercept", "sd_Article__Feedback",
+           "cor_Article__Intercept__Feedback")) + theme_classic()
+
+#Combo plot (histogram + traceplot)
+meta_model_post %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
+
+
+#FOREST PLOT
+
+#Creating dataframe with beta estimates for each article
+study.draws <- spread_draws(meta_model_post1, r_Article[Article,], b_Feedback) %>% 
+  mutate(b_Feedback = r_Article + b_Feedback)
+study.draws$Article <- as.factor(study.draws$Article) 
+
+#Creating variable containing the pooled effect across studies
+pooled.effect.draws <- spread_draws(meta_model_post1, b_Feedback) %>% 
+  mutate(Article = "Pooled Effect")
+
+#Binding individual and pooled estimates
+forest.data <- bind_rows(study.draws, pooled.effect.draws) %>% 
+   ungroup() %>%
+   mutate(Article = reorder(Article, b_Feedback))
+
+#Summarizing estimates (mean and quantiles)
+forest.data.summary <- group_by(forest.data, Article) %>% 
+  mean_qi(b_Feedback)
+
+#Plot code
+ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
+       data = forest.data) +
+  geom_vline(xintercept = fixef(meta_model_post1)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(meta_model_post1)[2, 3:4], color = "grey", linetype = 2) +
+  geom_vline(xintercept = 0, color = "black", size = 1) +
+  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
+                      alpha = 0.8) +
+  geom_pointintervalh(data = forest.data.summary, size = 1) +
+  geom_text(data = mutate_if(forest.data.summary, is.numeric, round, 2),
+    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+  labs(x = "Change",
+       y = element_blank()) +
+  theme_minimal()
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+PERI-COVID-19 DATA ANALYSIS
+
+
+
+
+OWN STUDY 
+
+#DATA PREPARATION 
+```{r}
+#Loading data
+#Dataframe with IDs matched
+p1 <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/COMPLETE ID 38.csv")
+#Round 1 
+sc_round1 <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/sc_round1 (accessed 2020-05-14).csv")
+#Round 2
+sc_round2 <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/sc_round2 (accessed 2020-05-14).csv")
+
+#Exclude empty rows in bottom of COMPLETE_ID_38
+p1 <- p1[1:38,]
+
+#Clean round 1 and 2 datasets to include only relevant columns 
+sc1 <- sc_round1 %>% 
+  select("ParticipantN" = "participant.id_in_session",
+         "URL round 1" = "participant.code",
+         "Round" = "participant._current_app_name",
+         "FirstRating" = "player.rating1",
+         "GroupRating" = "player.TPrating",
+         "FaceID" = "player.faceid")
+
+sc2 <- sc_round2 %>% 
+  select("ParticipantN" = "participant.id_in_session",
+         "URL round 2" = "participant.code",
+         "Round" = "participant._current_app_name",
+         "SecondRating" = "player.rating2",
+         "FaceID" = "player.faceid") 
+
+#Omit NA's
+sc1 <- na.omit(sc1)
+sc2 <- na.omit(sc2)
+
+#Merge to one dataset (sc_df)
+d_round1 <- merge(p1, sc1, by = "URL round 1")
+d_round2 <- merge(p1, sc2, by = "URL round 2")
+sc_df <- merge(d_round1, d_round2, by = c("FaceID","ID"))
+
+#Create column with raw change scores
+sc_df$Change <- sc_df$SecondRating - sc_df$FirstRating
+
+#Create column with feedback type 
+sc_df$Feedback <- sc_df$GroupRating - sc_df$FirstRating
+
+#Insert NA's where GroupRating = 0 
+sc_df <- sc_df %>%
+  mutate(
+    Feedback = ifelse(GroupRating==0, NA, Feedback)
+  )
+```
+
+
+
+#DEMOGRAPHICS
+```{r}
+demo_data <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/Demographic responses.csv")
+
+#Merge with data included in analysis
+demo_data <- merge(demo_data,sc_df,by = "ID")
+
+#Include only one row per participant 
+demo_data <- demo_data[ !duplicated(demo_data$ID), ]
+
+#Mean and standard deviation of age
+demo_data %>% 
+  get_summary_stats(Age,type = "mean_sd")
+
+#Mean and standard deviation of education
+demo_data %>% 
+  get_summary_stats(Education_years,type = "mean_sd")
+
+#Gender distribution 
+females <- sum(demo_data$Gender=="Female")
+males <- sum(demo_data$Gender=="Male")
+(100/38)*females
+(100/38)*males
+
+#Distribution of country of upbringing
+denmark <- sum(demo_data$`Country of upbringing`=="Denmark")
+not_denmark <- sum(demo_data$`Country of upbringing`!="Denmark")
+(100/38)*denmark
+(100/38)*not_denmark
+
+#Distribution of country of residence
+denmark2 <- sum(demo_data$`Country of residence`=="Denmark")
+not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
+(100/38)*denmark2
+(100/38)*not_denmark2
+```
+
+
+
+
+
+
+
+
+
+#MODELLING
+PRIOR
+```{r}
+#Model
+SocConformity_model <- bf(Change ~ 1 + FirstRating + Feedback + 
+                         (1 + FirstRating + Feedback | ID) + 
+                         (1 + FirstRating + Feedback | FaceID))
+
+#Get priors 
+get_prior(SocConformity_model, sc_df, family = gaussian)
+
+#Priors
+SocConformity_prior <- c(
+  prior(normal(0, 1), class = Intercept),
+  prior(normal(0, .3), class = b),
+  prior(normal(0, .3), class = sd),
+  prior(lkj(5), class = cor),
+  prior(normal(0,1), class = sigma)
+)
+
+#Prior model
+SocConformity_m_prior <- brm(
+  SocConformity_model,
+  sc_df,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = "only",
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+#Prior predictive check
+pp_check(SocConformity_m_prior, nsamples=100)
+
+```
+
+POSTERIOR
+```{r}
+#Posterior model
+SocConformity_own_study <- brm(
+  SocConformity_model,
+  sc_df,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = T,
+  chains = 4,
+  cores = 2,
+  iter = 4000,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+#Summary
+summary(SocConformity_own_study)
+
+#Posterior predictive check
+pp_check(SocConformity_own_study, nsamples=100)
+```
+
+
+GROUPED MODELS
+```{r}
+#Create subsets of the dataset to investigate effects of 
+d_none <- subset(sc_df, Feedback %in% c(0))
+d_neg <- subset(sc_df, Feedback %in% c(-2,-3))
+d_pos <- subset(sc_df, Feedback %in% c(2,3))
+#Create dfs for medium (-2, 2) and high (-3, 3) feedback
+d_medium <- subset(sc_df, Feedback %in% c(-2,2))
+d_high <- subset(sc_df, Feedback %in% c(-3,3))
+
+#Mean and sd of change in each group
+d_none %>% 
+  get_summary_stats(Change, FirstRating, SecondRating, type = "mean_sd")
+d_neg %>% 
+  get_summary_stats(Change,FirstRating, SecondRating, type = "mean_sd")
+d_pos %>% 
+  get_summary_stats(Change,FirstRating, SecondRating, type = "mean_sd")
+d_medium %>% 
+  get_summary_stats(Change,FirstRating, SecondRating, type = "mean_sd")
+d_high %>% 
+  get_summary_stats(Change,FirstRating, SecondRating, type = "mean_sd")
+
+#Models for subsets
+
+#None (0)
+SocConformity_low <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_none)
+
+#Negative (-3, -2)
+SocConformity_low <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_neg)
+
+#Positive (3, 2)
+SocConformity_pos <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_pos)
+
+#Medium effect (-2, 2)
+SocConformity_medium <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_medium)
+
+#High effect (-3, 3)
+SocConformity_high <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_high)
+
+```
+
+
+
+
+
+#REGRESSION TO THE MEAN 
+```{r}
+#In order to control for regression to the mean in the meta-analysis, we calculate a mean estimate of regression to the mean in the un-published in-class data collection, and our own data (below) to insert in the following simulation to obtain the underlying true conformity effect.
+
+#Unpublished data collection 
+in_class_no_feedback <- subset(cogsci_18, is.na(Feedback))
+#Model for regression to the mean estimate
+m_in_class <- lmer(SecondRating ~ 1 + FirstRating + (1 | ID), 
+          in_class_no_feedback, REML=F)
+#Extract regression to the mean
+est_in_class <- as.data.frame(fixef(m_in_class))
+est_in_class <- est_in_class[2,]
+#Own study
+sc_df_no_feedback <- subset(sc_df, is.na(Feedback))
+#Model for regression to the mean estimate
+m_own_study <- lmer(SecondRating ~ 1 + FirstRating + (1 | ID), 
+          sc_df_no_feedback, REML=F)
+est_sc_df <- as.data.frame(fixef(m_own_study))
+est_sc_df <- est_sc_df[2,]
+
+mean_reg_to_mean <- mean(c(est_in_class,est_sc_df))
+mean_reg_to_mean
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+

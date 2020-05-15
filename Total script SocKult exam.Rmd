@@ -386,7 +386,6 @@ not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
 
 
 #MODELLING
-PRIOR
 ```{r}
 #Model
 SocConformity_model <- bf(Change ~ 1 + FirstRating + Feedback + 
@@ -423,10 +422,6 @@ SocConformity_m_prior <- brm(
 #Prior predictive check
 pp_check(SocConformity_m_prior, nsamples=100)
 
-```
-
-POSTERIOR
-```{r}
 #Posterior model
 SocConformity_own_study <- brm(
   SocConformity_model,
@@ -451,15 +446,16 @@ pp_check(SocConformity_own_study, nsamples=100)
 ```
 
 
+
 GROUPED MODELS
 ```{r}
 #Create subsets of the dataset to investigate effects of 
 d_none <- subset(sc_df, Feedback %in% c(0))
 d_neg <- subset(sc_df, Feedback %in% c(-2,-3))
 d_pos <- subset(sc_df, Feedback %in% c(2,3))
-#Create dfs for medium (-2, 2) and high (-3, 3) feedback
 d_medium <- subset(sc_df, Feedback %in% c(-2,2))
 d_high <- subset(sc_df, Feedback %in% c(-3,3))
+d_general <- subset(sc_df, Feedback %in% c(3,2,-2,3))
 
 #Mean and sd of change in each group
 d_none %>% 
@@ -490,6 +486,11 @@ SocConformity_medium <- update(SocConformity_m, formula = SocConformity_f1, newd
 #High effect (-3, 3)
 SocConformity_high <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_high)
 
+#General effects (3, 2, -2, -3)
+SocConformity_high <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_general)
+
+
+
 ```
 
 
@@ -508,6 +509,7 @@ m_in_class <- lmer(SecondRating ~ 1 + FirstRating + (1 | ID),
 #Extract regression to the mean
 est_in_class <- as.data.frame(fixef(m_in_class))
 est_in_class <- est_in_class[2,]
+
 #Own study
 sc_df_no_feedback <- subset(sc_df, is.na(Feedback))
 #Model for regression to the mean estimate
@@ -521,7 +523,98 @@ mean_reg_to_mean
 ```
 
 
+
+ALTERNATIVE MODELLING 
 ```{r}
+#Add column in our three datasets with pre/peri info
+simonsen_19$Condition <- rep("Pre")
+cogsci_18$Condition <- rep("Pre")
+sc_df$Condition <- rep("Peri")
+
+#Clean so they contain same columns
+sc_df_clean <- sc_df
+sc_df_clean <- sc_df_clean %>% select(-c("URL round 2.y","URL round 1.y","URL round 1.x","URL round 2.x","ParticipantN.x","Round.x","ParticipantN.y","Round.y"))
+
+#Bind dataframes
+all_data <- rbind(simonsen_19,cogsci_18,sc_df_clean)
+
+#Insert NA's where GroupRating = 0 
+all_data <- all_data %>%
+  mutate(
+    Feedback = ifelse(GroupRating==0, NA, Feedback)
+  )
+
+#Omit NAs
+all_data <- na.omit(all_data)
+
+#Recode stuff to integer
+all_data$FirstRating <- as.integer(all_data$FirstRating)
+all_data$Feedback <- as.integer(all_data$Feedback)
+all_data$Condition <- as.factor(all_data$Condition)
+View(all_data)
+
+#Modelling 
+#Model 2
+SocConformity_model2 <- bf(Change ~ 0 + FirstRating + Feedback:Condition +
+                         (1 + FirstRating + Feedback | ID) + 
+                         (1 + FirstRating + Feedback | FaceID))
+
+
+SocConformity_high <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_high)
+
+
+#Get priors 
+get_prior(SocConformity_model, sc_df, family = gaussian)
+
+#Priors
+SocConformity_prior <- c(
+  prior(normal(0, 1), class = Intercept),
+  prior(normal(0, .3), class = b),
+  prior(normal(0, .3), class = sd),
+  prior(lkj(5), class = cor),
+  prior(normal(0,1), class = sigma)
+)
+
+#Prior model
+SocConformity_m_prior <- brm(
+  SocConformity_model,
+  sc_df,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = "only",
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+#Prior predictive check
+pp_check(SocConformity_m_prior, nsamples=100)
+
+#Posterior model
+SocConformity_own_study <- brm(
+  SocConformity_model,
+  sc_df,
+  family = gaussian,
+  prior = SocConformity_prior,
+  sample_prior = T,
+  chains = 4,
+  cores = 2,
+  iter = 4000,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+#Summary
+summary(SocConformity_own_study)
+
+#Posterior predictive check
+pp_check(SocConformity_own_study, nsamples=100)
+
 
 ```
 

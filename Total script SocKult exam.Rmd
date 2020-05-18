@@ -2,9 +2,7 @@
 title: "Total script SocKult exam"
 author: "Eva SH"
 date: "5/13/2020"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+output: md_document
 ---
 
 ```{r setup, include=FALSE}
@@ -181,9 +179,6 @@ meta_model_prior <- brm(
   control = list(adapt_delta = .99)
   )
 
-#Model summary
-posterior_summary(meta_model_prior, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
-
 #Prior predictive check
 (plot_prior <- pp_check(meta_model_prior,nsamples = 100)+ggtitle("Prior predictive check")+xlab("Change in rating"))
 
@@ -200,17 +195,18 @@ meta_model_post <- brm(
   control = list(adapt_delta = .999)
   )
 
-#Model summary
-posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
-
 #Posterior predictive check
 (plot_post <- pp_check(meta_model_post,nsamples = 100)+ggtitle("Posterior predictive check")+xlab("Change in rating"))
 
+#Model summaries
+summary(meta_model_post)
+posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
+
 #Hypothesis testing 
-hypothesis(meta_model_post1, "Feedback > 0")
+hypothesis(meta_model_post, "Feedback > 0")
 
 #Plot hypothesis against null hypothesis (prior)
-(hypothesis_plot <- plot(hypothesis(meta_model_post1, "Feedback > 0"))[[1]]+ggtitle("Effect of group opinion on second rating"))
+(hypothesis_plot <- plot(hypothesis(meta_model_post, "Feedback > 0"))[[1]]+ggtitle("Effect of group opinion on second rating"))
 ```
 
 
@@ -243,12 +239,12 @@ meta_model_post %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size 
 #FOREST PLOT
 
 #Creating dataframe with beta estimates for each article
-study.draws <- spread_draws(meta_model_post1, r_Article[Article,], b_Feedback) %>% 
+study.draws <- spread_draws(meta_model_post, r_Article[Article,], b_Feedback) %>% 
   mutate(b_Feedback = r_Article + b_Feedback)
 study.draws$Article <- as.factor(study.draws$Article) 
 
 #Creating variable containing the pooled effect across studies
-pooled.effect.draws <- spread_draws(meta_model_post1, b_Feedback) %>% 
+pooled.effect.draws <- spread_draws(meta_model_post, b_Feedback) %>% 
   mutate(Article = "Pooled Effect")
 
 #Binding individual and pooled estimates
@@ -263,8 +259,8 @@ forest.data.summary <- group_by(forest.data, Article) %>%
 #Plot code
 ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
        data = forest.data) +
-  geom_vline(xintercept = fixef(meta_model_post1)[2, 1], color = "grey", size = 1) +
-  geom_vline(xintercept = fixef(meta_model_post1)[2, 3:4], color = "grey", linetype = 2) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
   geom_vline(xintercept = 0, color = "black", size = 1) +
   geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
                       alpha = 0.8) +
@@ -277,25 +273,7 @@ ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)),
 ```
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 PERI-COVID-19 DATA ANALYSIS
-
-
-
 
 OWN STUDY 
 

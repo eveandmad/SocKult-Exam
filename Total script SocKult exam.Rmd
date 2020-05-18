@@ -31,6 +31,13 @@ simonsen_19 <- simonsen_19 %>% subset(ID > 200) %>% select(c("ID","FaceID","Firs
 #Remove NA's
 simonsen_19 <- na.omit(simonsen_19)
 
+#Add column in our three datasets with pre/peri info
+simonsen_19$Condition <- rep("Pre")
+
+#Write .csv
+write.csv(simonsen_19, file = "Simonsen_clean.csv")
+
+
 #Make new datasets for each type of feedback (low, same and high)
 low_simonsen_19 <- subset(simonsen_19, influenceLevel %in% c(-3,-2))
 same_simonsen_19 <- subset(simonsen_19, influenceLevel %in% c(0))
@@ -58,6 +65,11 @@ cogsci_18 <- cogsci_18 %>%
   mutate(
     Feedback = ifelse(GroupRating==0, NA, Feedback)
   )
+
+cogsci_18$Condition <- rep("Pre")
+
+#Write .csv
+write.csv(cogsci_18, file = "cogsci_clean.csv")
 
 #Mean of first rating
 cogsci_18 %>% 
@@ -297,7 +309,7 @@ sc_round1 <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/sc_ro
 #Round 2
 sc_round2 <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/sc_round2 (accessed 2020-05-14).csv")
 
-#Exclude empty rows in bottom of COMPLETE_ID_38
+#Exclude empty rows in bottom of p_1
 p1 <- p1[1:38,]
 
 #Clean round 1 and 2 datasets to include only relevant columns 
@@ -336,6 +348,17 @@ sc_df <- sc_df %>%
   mutate(
     Feedback = ifelse(GroupRating==0, NA, Feedback)
   )
+
+#Add Condition
+sc_df$Condition <- rep("Peri")
+
+#Clean so they contain same columns
+sc_df_clean <- sc_df
+sc_df_clean <- sc_df_clean %>% select(-c("URL round 2.y","URL round 1.y","URL round 1.x","URL round 2.x","ParticipantN.x","Round.x","ParticipantN.y","Round.y"))
+
+#Write .csv
+write.csv(sc_df_clean, file = "sc_clean.csv")
+
 ```
 
 
@@ -495,8 +518,6 @@ SocConformity_high <- update(SocConformity_m, formula = SocConformity_f1, newdat
 
 
 
-
-
 #REGRESSION TO THE MEAN 
 ```{r}
 #In order to control for regression to the mean in the meta-analysis, we calculate a mean estimate of regression to the mean in the un-published in-class data collection, and our own data (below) to insert in the following simulation to obtain the underlying true conformity effect.
@@ -618,6 +639,77 @@ pp_check(SocConformity_own_study, nsamples=100)
 
 ```
 
+```{r - forest plot}
+#Meta-data including own study
+MA_d <- read_csv("MA_d.csv")
+
+#Defining model
+meta_model <- 
+  bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
+
+#Define priors 
+prior = c(
+   prior(normal(0,0.25), class = b),
+   prior(lkj(5), class = cor),
+   prior(normal(0,0.5), class = Intercept),
+   prior(cauchy(0,0.1), class = sd))
+
+#Posterior model
+meta_model_post <- brm(
+  formula = meta_model,
+  data = MA_d,
+  family = gaussian(),
+  prior = prior,
+  sample_prior = T,
+  iter = 6000,
+  chains = 4,
+  cores = 2,
+  control = list(adapt_delta = .999)
+  )
+
+#Model summary
+posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
+
+#Posterior predictive check
+(plot_post <- pp_check(meta_model_post,nsamples = 100)+ggtitle("Posterior predictive check")+xlab("Change in rating"))
+
+
+#FOREST PLOT
+
+#Creating dataframe with beta estimates for each article
+study.draws <- spread_draws(meta_model_post, r_Article[Article,], b_Feedback) %>% 
+  mutate(b_Feedback = r_Article + b_Feedback)
+study.draws$Article <- as.factor(study.draws$Article) 
+
+#Creating variable containing the pooled effect across studies
+pooled.effect.draws <- spread_draws(meta_model_post, b_Feedback) %>% 
+  mutate(Article = "Pooled Effect")
+
+#Binding individual and pooled estimates
+forest.data <- bind_rows(study.draws, pooled.effect.draws) %>% 
+   ungroup() %>%
+   mutate(Article = reorder(Article, b_Feedback))
+
+#Summarizing estimates (mean and quantiles)
+forest.data.summary <- group_by(forest.data, Article) %>% 
+  mean_qi(b_Feedback)
+
+#Plot code
+ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
+       data = forest.data) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
+  geom_vline(xintercept = 0, color = "black", size = 1) +
+  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
+                      alpha = 0.8) +
+  geom_pointintervalh(data = forest.data.summary, size = 1) +
+  geom_text(data = mutate_if(forest.data.summary, is.numeric, round, 2),
+    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+  labs(x = "Change",
+       y = element_blank()) +
+  theme_minimal()
+
+```
 
 
 

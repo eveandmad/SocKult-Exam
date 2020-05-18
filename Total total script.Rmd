@@ -2,9 +2,11 @@
 title: "Total total script"
 author: "Eva Sahlholdt Hansen and Matilde Jacobsen"
 date: "5/15/2020"
-output: html_document
-editor_options: 
-  chunk_output_type: console
+output: 
+  md_document:
+    variant: markdown_github
+  editor_options: 
+    chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -117,10 +119,7 @@ meta_model_prior <- brm(
   control = list(adapt_delta = .99)
   )
 
-#Model summary
-posterior_summary(meta_model_prior, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
-
-#Prior predictive check
+#Prior predictive check (SM figure 1)
 (plot_prior <- pp_check(meta_model_prior,nsamples = 100)+ggtitle("Prior predictive check")+xlab("Change in rating"))
 
 #Posterior model
@@ -136,11 +135,12 @@ meta_model_post <- brm(
   control = list(adapt_delta = .999)
   )
 
-#Model summary
-posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
-
-#Posterior predictive check
+#Posterior predictive check (SM figure 1)
 (plot_post <- pp_check(meta_model_post,nsamples = 100)+ggtitle("Posterior predictive check")+xlab("Change in rating"))
+
+#Model summary (SM table 3)
+summary(meta_model_post)
+posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
 
 #Hypothesis testing 
 hypothesis(meta_model_post1, "Feedback > 0")
@@ -162,14 +162,14 @@ est_in_class[2,]
 ```{r - visualizations}
 #Model quality 
 
+#Combo plot (histogram + traceplot) (SM figure 2)
+meta_model_post %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
+
 #Overlay plot (SM figure 3)
 mcmc_rank <- mcmc_rank_overlay(meta_model_post,
                   pars = c("b_Intercept", "b_Feedback", 
            "sd_Article__Intercept", "sd_Article__Feedback",
            "cor_Article__Intercept__Feedback")) + theme_classic()
-
-#Combo plot (histogram + traceplot) (SM figure 2)
-meta_model_post %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 
 #Forest plot (SM figure 4)
 #Creating dataframe with beta estimates for each article
@@ -259,7 +259,7 @@ not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
 #Combining data for comparative analysis into one dataframe
 all_d <- rbind(simonsen_19, sc_df, cogsci_18)
 
-#Counting ID's
+#Counting ID's for sample size
 alldID <- as.data.frame(unique(all_d$ID))
 count(alldID)
 
@@ -334,7 +334,7 @@ post_check <- pp_check(Combined_m, nsamples=100)
 (post_check
   +ggtitle("Posterior predictive check"))
 
-#Obtaining estimate summaries of the posterior distribution (SM table 5)
+#Obtaining estimate summaries of the posterior distribution (SM table 6)
 summary(Combined_m)
 posterior_summary(Combined_m, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
 
@@ -356,7 +356,7 @@ mcmc_rank_overlay(Combined_m,
                             "sd_FaceID__FirstRating", "sd_FaceID__Feedback",
                             "sd_ID__Feedback", "sd_ID__FirstRating")) + theme_classic()
 
-#Violin plot of rre- and peri-COVID-19 estimates (uncorrected) with feedback -2.5, 0 and 2.5
+#Violin plot of re- and peri-COVID-19 estimates (uncorrected) with feedback -2.5, 0 and 2.5 (figure 3)
 all_d$Feedback2 <- as.factor(all_d$Feedback2)
 ggplot(all_d, aes(x=Feedback2, y=Change, color=Feedback2)) +
     geom_jitter(color="grey", size=0.2, alpha=0.2, na.rm = T) +
@@ -378,36 +378,12 @@ ggplot(all_d, aes(x=Feedback2, y=Change, color=Feedback2)) +
 #Meta-data including own study
 MA_d <- read_csv("MA_d.csv")
 
-#Defining model
-meta_model <- 
-  bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
+#Updating meta-model to include own study 
+meta_model_post_2 <- update(meta_model_post, formula = meta_model, newdata = MA_d)
 
-#Define priors 
-prior = c(
-   prior(normal(0,0.25), class = b),
-   prior(lkj(5), class = cor),
-   prior(normal(0,0.5), class = Intercept),
-   prior(cauchy(0,0.1), class = sd))
-
-#Posterior model
-meta_model_post_2 <- brm(
-  formula = meta_model,
-  data = MA_d,
-  family = gaussian(),
-  prior = prior,
-  sample_prior = T,
-  iter = 6000,
-  chains = 4,
-  cores = 2,
-  control = list(adapt_delta = .999)
-  )
-
-#Model summary
+#Model summary 
 posterior_summary(meta_model_post_2, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
-
-#Posterior predictive check
-(plot_post <- pp_check(meta_model_post_2,nsamples = 100)+ggtitle("Posterior predictive check")+xlab("Change in rating"))
-
+summary(meta_model_post_2)
 
 #FOREST PLOT 2 (SM figure 8)
 
@@ -507,7 +483,7 @@ n <- 1000
 MaxScore <- 8
 MinScore <- 1
 
-#Running simulation of different levels of regression to the mean and true conformity effects
+#Running simulation of fixed level of regression to the mean at 0.66 and different true conformity effects
 ConformityEstimateC02 <- CalculateCorrelation(n, samplesize, 
                                               Regression2Mean = 0.66,
                                               Conformity = 0.02)
@@ -526,7 +502,7 @@ ConformityEstimateC2 <- CalculateCorrelation(n, samplesize,
 ConformityEstimateC25 <- CalculateCorrelation(n, samplesize, 
                                               Regression2Mean = 0.66,
                                               Conformity = -0.25)
-
+#Binding estimates to one data-frame
 ConformityEstimate <- rbind(ConformityEstimateC02,
                             ConformityEstimateC05,
                             ConformityEstimateC1,
@@ -534,7 +510,7 @@ ConformityEstimate <- rbind(ConformityEstimateC02,
                             ConformityEstimateC2,
                             ConformityEstimateC25)
 
-#Obtain a table of means of different levels of conformity according to regression to the mean
+#Obtain a table of means of different levels of conformity according to regression to the mean (first 5 rows of SM table 4)
 Reference <- ConformityEstimate %>%
   group_by(RegressionTrue, ConformityTrue) %>%
   summarise(
@@ -542,6 +518,39 @@ Reference <- ConformityEstimate %>%
     EstimatedRegression = mean(RegressionTrue),
     TrueConformity = mean(ConformityTrue),
     EstimatedConformity = mean(ConformityEstimate))
+
+#Running simulation of fixed level of regression to the mean at 0.52 and different true conformity effects
+C02 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = 0.02)
+C05 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = -0.05)
+C1 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = -0.1)
+C17 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = -0.17)
+C2 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = -0.2)
+C25 <- CalculateCorrelation(n, samplesize, 
+                            Regression2Mean = 0.52,
+                            Conformity = -0.25)
+
+#Binding estimates to one data-frame
+C <- rbind(C02, C05, C1, C17, C2, C25)
+
+#Obtain a table of means of different levels of conformity according to regression to the mean (last 5 rows of SM table 4)
+Reference2 <- C %>%
+  group_by(RegressionTrue, ConformityTrue) %>%
+  summarise(
+    TrueRegression = mean(RegressionTrue),
+    EstimatedRegression = mean(RegressionTrue),
+    TrueConformity = mean(ConformityTrue),
+    EstimatedConformity = mean(ConformityEstimate))
+
 ```
 
 
@@ -555,6 +564,20 @@ sc_df_same <- subset(sc_df, Feedback %in% c(-1, 0, 1))
 sc_df_same$Feedback2 <- 0
 sc_df_high <- subset(sc_df, Feedback %in% c(3,2))
 sc_df_high$Feedback2 <- 2.5
+
+#Summary statistics of first and second rating for different types of feedback (SM table 5 - first 2 rows)
+sc_df %>% 
+  get_summary_stats(FirstRating,type = "mean_sd")
+sc_df %>% 
+  get_summary_stats(SecondRating,type = "mean_sd")
+
+#Summary statistics of change for different types of feedback (SM table 5 - last 3 rows)
+sc_df_low %>% 
+  get_summary_stats(Change,type = "mean_sd")
+sc_df_same %>% 
+  get_summary_stats(Change,type = "mean_sd")
+sc_df_high %>% 
+  get_summary_stats(Change,type = "mean_sd")
 
 #Creating dataframe excluding feedback of 0 
 sc_df_lh <- rbind(sc_df_low,sc_df_high)
@@ -577,7 +600,9 @@ SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback +
                          (1 + FirstRating + Feedback | FaceID))
 
 #Get priors 
-get_prior(SocConformity_f1, d38_lh, family = gaussian)
+get_prior(SocConformity_f1, 
+          d38_lh, 
+          family = gaussian)
 
 #Define priors
 SocConformity_prior <- c(
@@ -603,7 +628,7 @@ SocConformity_m_prior <- brm(
   )
 )
 
-#Prior predictive check
+#Prior predictive check (SM figure 9)
 prior_check <- pp_check(SocConformity_m_prior, nsamples=100)
 (prior_check
   +ggtitle("Prior predictive check"))
@@ -624,13 +649,14 @@ SocConformity_m <- brm(
   )
 )
 
-#Summary of posterior model
-summary(SocConformity_m)
-
-#Posterior predictive check
+#Posterior predictive check (SM figure 9)
 post_check <- pp_check(SocConformity_m, nsamples=100)
 (post_check
   +ggtitle("Posterior predictive check"))
+
+#Summary of posterior model (SM table 7)
+posterior_summary(SocConformity_m, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
+summary(SocConformity_m)
 
 #Hypothesis testing
 hypothesis(SocConformity_m,"Feedback > 0")
@@ -647,7 +673,7 @@ mcmc_rank_overlay(SocConformity_m,
            "sd_FaceID__Intercept", "sd_FaceID__Feedback",
            "sd_Participant__Intercept", "sd_Participant__Feedback")) + theme_classic()
 
-#Spaghetti plot of participant level effects (SM figure 11)
+#Spaghetti plot of participant level effects (SM figure 12)
 #Predicting estimates for plotting
 xx <- predict(SocConformity_m, summary=T)
 
@@ -661,7 +687,7 @@ ggplot(d38_lh) +
   geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID), show.legend=F) +
   ggtitle("Regression of change on participant level")
 
-#Stacked participant level hypothesis plot (SM figure 11)
+#Stacked participant level hypothesis plot (SM figure 12)
 #Obtaining coefficients for each participant according to alternative hypothesis
 X <- hypothesis(SocConformity_m, "Feedback > 0", group = "Participant", scope = "coef")
 

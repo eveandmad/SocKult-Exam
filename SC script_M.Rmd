@@ -13,26 +13,27 @@ editor_options:
 pacman::p_load(tidyverse, 
                brms,
                bayesplot,
-               viridis,
+               viridis,#color pallette
                stringr,
                lme4,
                lmerTest, 
-               rstatix
+               rstatix,
+               tidybayes,
+               broom.mixed,
+               wesanderson, #color pallette
+               RColorBrewer, #color pallette
+               ggsci, #color pallette
+               arsenal, #comparedf
+               openair #time average
 )
 
 
 #Loading data from google forms
-demo <- read_csv("Exam project spring 2020_part 1 (Responses).csv") %>% 
-  mutate()
+part1 <- read_csv("Exam project spring 2020_part 1 (Responses) - Form Responses 1.csv")
 
-part2 <- read_csv("Exam project spring 2020_part 2 (Responses).csv")
+part2 <- read_csv("Exam project spring 2020_part 2 (Responses) - Form Responses 1.csv")
 
-p43 <- read_csv("Completed participant IDs - 44.csv") %>% 
-  select(-"Finished?")
-
-p41 <- read_csv("Completed participant IDs - 41.csv") 
-
-p38 <- read_csv("Completed participant IDs - clean.csv")
+p38 <- read_csv("Raw data/Completed participant IDs - clean.csv")
 
 #Loading data from oTree
 sc_round1 <- read_csv("sc_round1 (accessed 2020-05-14).csv") 
@@ -61,14 +62,6 @@ p1 <- part1 %>%
 p1$URL <- str_remove(p1$URL, "https://socialcognition.au.dk/p/") 
 p1$URL <- str_remove_all(p1$URL, '[:punct:].*') 
 
-# #renaming chjac777
-# p1[2,1] <- "chjac777"
-# p1[2,2] <- "c1bytu87"
-# #remaning Christian
-# p1[3,2] <- "p16vvjzi"
-# #renaming PCWU
-# p1[5,2] <- "snkuwas9"
-
 ##Part 2##
 summary(part2)
 p2 <- part2 %>% 
@@ -83,13 +76,15 @@ p38$`URL round 2` <- gsub("8gnlaox0", "8gnloax0", p38$`URL round 2`)
 
 ##Cleaning oTree data##
 ##Round 1
+summary(sc_round1)
 sc1 <- sc_round1 %>% 
   select("ParticipantN" = "participant.id_in_session",
          "URL round 1" = "participant.code",
          "Round" = "participant._current_app_name",
          "FirstRating" = "player.rating1",
          "GroupRating" = "player.TPrating",
-         "FaceID" = "player.faceid")
+         "FaceID" = "player.faceid",
+         "TimeStamp1" = "participant.time_started")
 sc1 <- na.omit(sc1)
 
 ##Round 2
@@ -99,52 +94,59 @@ sc2 <- sc_round2 %>%
          "URL round 2" = "participant.code",
          "Round" = "participant._current_app_name",
          "SecondRating" = "player.rating2",
-         "FaceID" = "player.faceid") 
+         "FaceID" = "player.faceid",
+         "TimeStamp2" = "participant.time_started") 
 sc2 <- na.omit(sc2)
 
-#Binding columns
+#Binding columns for systematically matched data
 d1 <- merge(p1, sc1, by = "URL")
 d2 <- merge(p2, sc2, by = "URL")
 d <- merge(d1, d2, by = c("FaceID","ID"))
+#counting ID's
+dID <- as.data.frame(unique(d$ID))
+count(dID)
 
-#For cleaned data
+#For manually cleaned data
 d381 <- merge(p38, sc1, by = "URL round 1")
 d382 <- merge(p38, sc2, by = "URL round 2")
 d38 <- merge(d381, d382, by = c("FaceID","ID"))
 
+#counting ID's
 d38ID <- as.data.frame(unique(d38$ID))
 count(d38ID)
 
-#For cleaned data with missing ratings
-d411 <- merge(p41, sc1, by = "URL round 1")
-d412 <- merge(p41, sc2, by = "URL round 2")
-d41 <- merge(d411, d412, by = c("FaceID","ID"))
+#Getting time stamp
+last_round1 <- d38[ !duplicated(d38$ID,fromLast=TRUE), ]
+first_round1 <- d38[ !duplicated(d38$ID), ]
+time <- merge(last_round1, first_round1, by ="ID")
+time$time_dif <- time$TimeStamp2.y - time$TimeStamp1.y
+time %>% as.numeric(time$time_dif) 
+time$hours <- time$time_dif/60
+mean(time$hours)
+sd(time$hours)
 
-d41ID <- as.data.frame(unique(d41$ID))
-count(d41ID)
-
-#Creating feedback
+#Creating Feedback for systematically matched data
 d$Feedback <- d$GroupRating - d$FirstRating
 d <- d %>%
   mutate(
     Feedback = ifelse(GroupRating==0, NA, Feedback)
   )
 
-#Creating feedback for 38
+#Creating feedback for manually matched data
 d38$Feedback <- d38$GroupRating - d38$FirstRating
 d38 <- d38 %>%
   mutate(
     Feedback = ifelse(GroupRating==0, NA, Feedback)
   )
 
-#Feedback 2 
-d38$Feedback2 <- d38 %>% 
-  Feedback2 = ifelse(Feedback %in% c(-2, -3), -2.5, Feedback)
-
 #Creating raw change scores
+#systematic match
+d$Change <- d$SecondRating - d$FirstRating
+#manual match
 d38$Change <- d38$SecondRating - d38$FirstRating
 
-##Checking for regression to the mean
+
+##Checking for regression to the mean in manually matched data
 d38_2 <- subset(d38, is.na(Feedback))
 d38_2ID <- as.data.frame(unique(d38_2$ID))
 count(d38_2ID)
@@ -153,6 +155,7 @@ count(d38_2ID)
 m <- lmer(SecondRating ~ 1 + FirstRating + (1  | ID), 
           subset(d38, is.na(Feedback)), REML=F)
 summary(m)
+
 #Estimate of a correlation between first and second rating. 1 = perfectly correlated, the smaller it is the more regression to the mean
 ggplot(subset(d38, is.na(Feedback)), aes(FirstRating,SecondRating)) + 
   geom_point() +
@@ -161,7 +164,128 @@ ggplot(subset(d38, is.na(Feedback)), aes(FirstRating,SecondRating)) +
 d38$Changeabs <- abs(d38$Change)
 mean(d38$Changeabs)
 
+#Randomizing subject ID
+
+dID <- as.data.frame(unique(d$ParticipantN.x))
+count(dID)
+
+#Write csv
+write.csv(d38, file = "d38.csv")
 ```
+
+
+Exploring by group rating: manually matched data
+
+```{r}
+#Reading cleaned data
+d38 <- read.csv("d38.csv")
+
+#Creating different subsets for different types of feedback and new column for for 3 levels of feedback
+d38low <- subset(d38, Feedback %in% c(-3,-2))
+d38low$Feedback2 <- -2.5
+d38same <- subset(d38, Feedback %in% c(-1, 0, 1))
+d38same$Feedback2 <- 0
+d38high <- subset(d38, Feedback %in% c(3,2))
+d38high$Feedback2 <- 2.5
+
+
+#Summary statistics of first and second rating for different types of feedback
+d38 %>% 
+  get_summary_stats(FirstRating,type = "mean_sd")
+d38 %>% 
+  get_summary_stats(SecondRating,type = "mean_sd")
+
+#Summary statistics of change for different types of feedback
+d38low %>% 
+  get_summary_stats(Change,type = "mean_sd")
+d38same %>% 
+  get_summary_stats(Change,type = "mean_sd")
+d38high %>% 
+  get_summary_stats(Change,type = "mean_sd")
+
+#Creating subset with only low and high feedback and selecting relevant columns
+d38_lh <- rbind(d38low,d38high)
+
+d38_lh <- d38_lh %>% select(
+  "FaceID",
+  "ID",
+  "Participant" = "ParticipantN.x",
+  "FirstRating",
+  "GroupRating",
+  "SecondRating",
+  "Feedback",
+  "Change"
+)
+
+#Combined with new Feedback column
+d38_lsh <- rbind(d38low,d38same,d38high)
+d38_lsh <- d38_lsh %>% select(
+  "FaceID",
+  "ID",
+  "Participant" = "ParticipantN.x",
+  "FirstRating",
+  "GroupRating",
+  "SecondRating",
+  "Feedback",
+  "Change",
+  "Feedback2"
+)
+```
+
+Exploring by group rating: systematically matched data
+```{r}
+#Systematically paired
+dlow <- subset(d, Feedback %in% c(-3,-2))
+dlow$Feedback2 <- -2.5
+dsame <- subset(d, Feedback %in% c(-1, 0, 1))
+dsame$Feedback2 <- 0
+dhigh <- subset(d, Feedback %in% c(3,2))
+dhigh$Feedback2 <- 2.5
+
+#Creating subset with only low and high feedback and selecting relevant columns
+d_lsh <- rbind(dlow,dsame,dhigh)
+
+d_lsh <- d_lsh %>% select(
+  "FaceID",
+  "ID",
+  "Participant" = "ParticipantN.x",
+  "FirstRating",
+  "GroupRating",
+  "SecondRating",
+  "Feedback",
+  "Change",
+  "Feedback2"
+)
+
+```
+
+
+Combining data from Simonsen et al. 2019, Unpublished in-class study 2020 & Unpublished own study 2020
+```{r}
+#Rading cleaned data-sets
+simonsen <- read_csv("Simonsen_clean.csv")
+sc <- read_csv("sc_clean.csv")
+cogsci <- read_csv("cogsci_clean.csv")
+
+#Combining them into one dataframe
+all_d <- rbind(simonsen, sc, cogsci)
+
+#Counting ID's
+alldID <- as.data.frame(unique(all_d$ID))
+count(alldID)
+
+#Creating feedback divided by type
+allLow <- subset(all_d, Feedback %in% c(-3,-2))
+allLow$Feedback2 <- -2.5
+allSame <- subset(all_d, Feedback %in% c(-1, 0, 1))
+allSame$Feedback2 <- 0
+allHigh <- subset(all_d, Feedback %in% c(3,2))
+allHigh$Feedback2 <- 2.5
+
+all_d <- rbind(allLow,allSame,allHigh)
+
+```
+
 
 
 ### Define your hypotheses
@@ -185,12 +309,12 @@ Varying effects:
 * priors
 
 ```{r}
-
+#Model for own data only : Low and High feedback type
 SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback + 
-                         (1 + FirstRating + Feedback | ID) + 
+                         (1 + FirstRating + Feedback | Participant) + 
                          (1 + FirstRating + Feedback | FaceID))
 
-get_prior(SocConformity_f1, d38, family = gaussian)
+get_prior(SocConformity_f1, d38_lh, family = gaussian)
 
 SocConformity_prior <- c(
   prior(normal(0, 1), class = Intercept),
@@ -202,7 +326,7 @@ SocConformity_prior <- c(
 
 SocConformity_m_prior <- brm(
   SocConformity_f1,
-  d38,
+  d38_lh,
   family = gaussian,
   prior = SocConformity_prior,
   sample_prior = "only",
@@ -214,17 +338,19 @@ SocConformity_m_prior <- brm(
   )
 )
 
-pp_check(SocConformity_m_prior, nsamples=100)
+prior_check <- pp_check(SocConformity_m_prior, nsamples=100)
+
+(prior_check
+  +ggtitle("Prior predictive check"))
 
 ```
 
 ## Fit the model and assess model quality
 
-
 ```{r}
 SocConformity_m <- brm(
   SocConformity_f1,
-  d38,
+  d38_lh,
   family = gaussian,
   prior = SocConformity_prior,
   sample_prior = T,
@@ -239,19 +365,9 @@ SocConformity_m <- brm(
 
 summary(SocConformity_m)
 
-pp_check(SocConformity_m, nsamples=100)
-
-d38low <- subset(d38, Feedback %in% c(-3,-2))
-d38same <- subset(d38, Feedback %in% c(-1, 0, 1))
-d38high <- subset(d38, Feedback %in% c(3,2))
-
-d38low %>% 
-  get_summary_stats(Change,type = "mean_sd")
-d38same %>% 
-  get_summary_stats(Change,type = "mean_sd")
-d38high %>% 
-  get_summary_stats(Change,type = "mean_sd")
-
+post_check <- pp_check(SocConformity_m, nsamples=100)
+(post_check
+  +ggtitle("Posterior predictive check"))
 
 #Assessing chains
 #Traceplot
@@ -259,22 +375,58 @@ color_scheme_set("viridis")
 mcmc_trace(SocConformity_m,
            pars = c("b_Intercept", "b_Feedback", 
            "sd_FaceID__Intercept", "sd_FaceID__Feedback",
-           "sd_ID__Intercept", "sd_ID__Feedback")) + 
+           "sd_Participant__Intercept", "sd_Participant__Feedback")) + 
   theme_classic()
+
+SocConformity_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 #Overlay
 mcmc_rank_overlay(SocConformity_m,
                   pars = c("b_Intercept", "b_Feedback", 
            "sd_FaceID__Intercept", "sd_FaceID__Feedback",
-           "sd_ID__Intercept", "sd_ID__Feedback")) + theme_classic()
+           "sd_Participant__Intercept", "sd_Participant__Feedback")) + theme_classic()
 
 # The posteriors have moved or gotten more confident than the priors
 plot(hypothesis(SocConformity_m,"Intercept > 0"))
 plot(hypothesis(SocConformity_m,"Intercept > 0", class="sd", group="FaceID"))
-plot(hypothesis(SocConformity_m,"Intercept > 0", class="sd", group="ID"))
+plot(hypothesis(SocConformity_m,"Intercept > 0", class="sd", group="Participant"))
 plot(hypothesis(SocConformity_m,"Feedback > 0"))
 plot(hypothesis(SocConformity_m,"Feedback > 0", class="sd", group="FaceID"))
-plot(hypothesis(SocConformity_m,"Feedback > 0", class="sd", group="ID"))
+plot(hypothesis(SocConformity_m,"Feedback > 0", class="sd", group="Participant"))
 plot(conditional_effects(SocConformity_m), points=T, rug=T)[[1]] + theme_classic()
+
+```
+
+## Results and hyp testing
+```{r}
+summary(SocConformity_m)
+
+tab_model(SocConformity_m)
+#hypothesis 1: there is an effect of social conformity
+hypothesis(SocConformity_m,"Feedback > 0")
+
+## Visualize 
+conditional_effects(SocConformity_m)
+
+estimates <- ranef(SocConformity_m)
+
+xx <- predict(SocConformity_m, summary=T)
+
+d38_lh <- cbind(d38_lh,xx)
+d38_lh$Participant <- as.factor(d38_lh$Participant)
+ggplot(d38_lh) + 
+  geom_point(aes(Feedback,Change, color = ID, group=ID), show.legend=F) + 
+  geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID), show.legend=F) +
+  ggtitle("Regression of change on participant level")
+
+
+X <- hypothesis(SocConformity_m, "Feedback > 0", group = "Participant", scope = "coef")
+X$hypothesis %>%
+  left_join(distinct(d38_lh, Group = Participant)) %>% 
+  mutate(Participant = factor(Group), Conformity = Estimate) %>%
+  ggplot(aes(Conformity, Participant)) +
+  geom_errorbarh(aes(xmin = CI.Lower, xmax = CI.Upper)) +
+  geom_point() + theme_classic() + 
+  ggtitle("Effect of feedback on participant level", subtitle="Social conformity estimates with 95%CI")
 
 ```
 
@@ -289,28 +441,94 @@ summary(SocConformity_same)
 summary(SocConformity_high)
 ```
 
-Models indexed by group opinion: SAME
+Model systematically merged data
 ```{r}
+m_d <- update(SocConformity_m, formula = SocConformity_f1, newdata = d_lh)
 
-SocConformity_same <- bf(Change ~ 1 + FirstRating + Feedback + 
+summary(m_d)
+
+#Participant level
+xxd <- predict(m_d, summary=T)
+d <- cbind(d,xxd)
+d$ID <- as.factor(d$ID)
+ggplot(d) + 
+  geom_point(aes(Feedback,Change, color = ID, group=ID))+#, show.legend=F) 
+  geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID))+#, show.legend=F) 
+  ggtitle("Regression of change on participant level")
+
+#violin boxplot by condition
+d_lsh$Feedback2 <- as.factor(d_lsh$Feedback2)
+
+#3 levels of feedback
+ggplot(d_lsh, aes(x=Feedback2, y=Change, color=Feedback2)) +
+    geom_jitter(color="grey", size=0.2, alpha=0.2, na.rm = T) +
+    geom_violin(position="dodge", width=1, fill="transparent") +
+    geom_boxplot(width=0.3, alpha=.5, fill = "black") +
+    scale_color_manual(values = wes_palette("GrandBudapest1", n = 3))+
+    theme_classic() +
+    theme(
+      legend.position="bottom",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle(expression(bold("Change in trustworthiness according to feedback")), subtitle = "Grouped by condition") +
+    xlab("Feedback type")
+
+```
+
+Comparing systematic and manually matched data
+```{r}
+d38_lsh$match <- "manual"
+d_lsh$match <- "systrmatic"
+
+d_ms <- rbind(d38_lsh, d_lsh)
+
+#violin boxplot by condition
+d_ms$Feedback2 <- as.factor(d_ms$Feedback2)
+
+#3 levels of feedback
+ggplot(d_ms, aes(x=Feedback2, y=Change, color=Feedback2)) +
+    geom_jitter(color="grey", size=0.2, alpha=0.2, na.rm = T) +
+    geom_violin(position="dodge", width=1, fill="transparent") +
+    geom_boxplot(width=0.3, alpha=.5, fill = "black") +
+    scale_color_manual(values = wes_palette("GrandBudapest1", n = 3))+
+    theme_classic() +
+    theme(
+      legend.position="bottom",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle(expression(bold("Change in trustworthiness according to feedback")), subtitle = "Grouped by condition") +
+    xlab("Feedback type")+
+    facet_wrap(~match)
+
+```
+
+
+Model with condition
+```{r}
+Combined_f1 <- bf(Change ~ 0 + FirstRating:Condition + Feedback:Condition + 
                          (1 + FirstRating + Feedback | ID) + 
                          (1 + FirstRating + Feedback | FaceID))
 
-get_prior(SocConformity_same, d38same, family = gaussian)
+get_prior(Combined_f1, all_d, family = gaussian)
 
-SocConformity_prior_low <- c(
-  prior(normal(0, 0.2), class = Intercept),
-  prior(normal(0, -.3), class = b),
+Combined_prior <- c(
+  prior(normal(0, .3), class = b, coef = ConditionPeri:Feedback),
+  prior(normal(0, .3), class = b, coef = ConditionPre:Feedback),
+  prior(normal(0, .5), class = b, coef = FirstRating:ConditionPeri),
+  prior(normal(0, .5), class = b, coef = FirstRating:ConditionPre),
   prior(normal(0, .3), class = sd),
   prior(lkj(5), class = cor),
   prior(normal(0,1), class = sigma)
 )
 
-SocConformity_low_prior <- brm(
-  SocConformity_low,
-  d38low,
+#Combined_m1 <- update(SocConformity_m, formula = Combined_f1, newdata = all_d)
+
+#Prior check
+Combined_m_prior <- brm(
+  Combined_f1,
+  all_d,
   family = gaussian,
-  prior = SocConformity_prior_low,
+  prior = Combined_prior,
   sample_prior = "only",
   chains = 2,
   cores = 2,
@@ -320,68 +538,105 @@ SocConformity_low_prior <- brm(
   )
 )
 
-pp_check(SocConformity_m_prior, nsamples=100)
+prior_check <- pp_check(Combined_m_prior, nsamples=100)
+(prior_check
+  +ggtitle("Prior predictive check"))
 
-SocConformity_low_m <- brm(
-  SocConformity_low,
-  d38low,
+#Posterior
+Combined_m <- brm(
+  Combined_f1,
+  all_d,
   family = gaussian,
-  prior = SocConformity_prior_low,
+  prior = Combined_prior,
   sample_prior = T,
-  chains = 2,
+  chains = 4,
   cores = 2,
+  iter = 4000,
   control = list(
     adapt_delta = 0.99,
     max_treedepth = 20
   )
 )
 
+post_check <- pp_check(Combined_m, nsamples=100)
+(post_check
+  +ggtitle("Posterior predictive check"))
 
-## Model comparison
-
-```{r}
-# What would make sense?
-## Model without rating?
-## Model without feedback?
-
-
-SocConformity_f0 <- 
-  bf(Change ~ 1 + FirstRating + 
-       (1 + FirstRating | ID) + 
-       (1 + FirstRating | FaceID))
-
-SocConformity_m0 <- update(SocConformity_m, formula = SocConformity_f0, newdata = d)
-
-SocConformity_m0 <- add_criterion(SocConformity_m0,criterion="loo")
-SocConformity_m <- add_criterion(SocConformity_m,criterion="loo")
-loo_compare(SocConformity_m0,SocConformity_m)
-loo_model_weights(SocConformity_m0,SocConformity_m)
 ```
 
 ## Results and hyp testing
 ```{r}
-summary(SocConformity_m)
-hypothesis(SocConformity_m,"Feedback > 0")
+Combined_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
+#Overlay
+mcmc_rank_overlay(Combined_m,
+                  pars = c("b_FirstRating:ConditionPeri", "b_FirstRating:ConditionPre", 
+                           "b_ConditionPeri:Feedback","b_ConditionPre:Feedback",
+                            "sd_FaceID__FirstRating", "sd_FaceID__Feedback",
+                            "sd_ID__Feedback", "sd_ID__FirstRating")) + theme_classic()
+
+summary(Combined_m)
+posterior_summary(Combined_m, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
+#hypothesis 1: there is an effect of social conformity
+hypothesis(Combined_m,"ConditionPeri:Feedback > ConditionPre:Feedback")
+hypothesis(Combined_m,"ConditionPre:Feedback > ConditionPeri:Feedback")
+hypothesis(Combined_m,"ConditionPeri:Feedback > 0")
+hypothesis(Combined_m,"ConditionPre:Feedback > 0")
+
+p1 <- plot(hypothesis(Combined_m,"ConditionPeri:Feedback > 0"))
+p1 + ggtitle("Evidence for effect of feedback")
+
+plot(hypothesis(Combined_m1,"ConditionPre:Feedback > 0"))
 
 ## Visualize 
-conditional_effects(SocConformity_m)
+conditional_effects(Combined_m)
 
-xx <- predict(SocConformity_m, summary=T)
-d <- cbind(d,xx)
-d$ID <- as.factor(d$ID)
-ggplot(d) + 
-  geom_point(aes(Feedback,Change, color = ID, group=ID)) + 
-  geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID))
+estimates <- ranef(Combined_m)
 
-X <- hypothesis(SocConformity_m, "Feedback > 0.17",group = "ID", scope = "coef")
-X$hypothesis %>%
-  left_join(distinct(d, Group = ID)) %>% 
-  mutate(id = factor(Group), Conformity = Estimate) %>%
-  ggplot(aes(Conformity, id)) +
-  geom_errorbarh(aes(xmin = CI.Lower, xmax = CI.Upper)) +
-  geom_point() + theme_classic()
+#Participant level
+xx1 <- predict(Combined_m, summary=T)
+all_d <- cbind(all_d,xx1)
+all_d$ID <- as.factor(all_d$ID)
+ggplot(all_d) + 
+  geom_point(aes(Feedback,Change, color = ID, group=ID))+#, show.legend=F) 
+  geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID))+#, show.legend=F) 
+  ggtitle("Regression of change on participant level")
+
+#violin boxplot by condition
+all_d$Feedback2 <- as.factor(all_d$Feedback2)
+
+#3 levels of feedback
+ggplot(all_d, aes(x=Feedback2, y=Change, color=Feedback2)) +
+    geom_jitter(color="grey", size=0.2, alpha=0.2, na.rm = T) +
+    geom_violin(position="dodge", width=1, fill="transparent") +
+    geom_boxplot(width=0.3, alpha=.5, fill = "black") +
+    scale_color_manual(values = wes_palette("GrandBudapest1", n = 3))+
+    theme_classic() +
+    theme(
+      legend.position="bottom",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle(expression(bold("Change in trustworthiness according to feedback")), subtitle = "Grouped by condition") +
+    xlab("Feedback type")+
+    facet_wrap(~Condition)
+#5 levels of feedback
+ggplot(all_d, aes(x=Feedback, y=Change, color=Feedback)) +
+    geom_jitter(color="grey", size=0.2, alpha=0.2, na.rm = T) +
+    geom_violin(position="dodge", width=0.8, fill="transparent") +
+    geom_boxplot(width=0.3, alpha=.5, fill = "black") +
+    #scale_color_viridis(discrete = T, option="magma") + 
+    scale_color_manual(values = wes_palette("Darjeeling1", n = 5))+
+    theme_classic()+
+    theme(
+      legend.position="bottom",
+      plot.title = element_text(size=11)
+    ) +
+    ggtitle(expression(bold("Change in trustworthiness according to feedback")), subtitle = "Grouped by condition") +
+    xlab("Feedback type")+
+  facet_wrap(~Condition)
+
 
 ```
+
 
 ### Report
 

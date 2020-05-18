@@ -171,6 +171,21 @@ count(dID)
 
 #Write csv
 write.csv(d38, file = "d38.csv")
+
+#Second cleaned csv for total total script
+sc_df_clean <- d38 %>% select(
+  "FaceID",
+  "ID",
+  "Participant" = "ParticipantN.x",
+  "FirstRating",
+  "GroupRating",
+  "SecondRating",
+  "Feedback",
+  "Change",
+  "TimeStamp1",
+  "TimeStamp2"
+)
+write.csv(sc_df_clean, file = "sc_df_clean.csv")
 ```
 
 
@@ -369,6 +384,7 @@ post_check <- pp_check(SocConformity_m, nsamples=100)
 (post_check
   +ggtitle("Posterior predictive check"))
 
+posterior_summary(SocConformity_m, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
 #Assessing chains
 #Traceplot
 color_scheme_set("viridis")

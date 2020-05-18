@@ -21,15 +21,17 @@ pacman::p_load(tidyverse,
                forcats,
                viridis,
                readxl,
-               mice #for missing values
+               mice, #for missing values
+               patchwork,
+               brmstools
 )
-
+?patchwork
 #Study overview
 MA_demo <- read_excel("Matrix_MetaAnalysis.xlsx") %>% 
   select("Paper" = "ArticleID",
          "Article")
 
-View(MA_d)
+View(MA_demo)
 
 ```
 
@@ -55,7 +57,7 @@ Varying effect:
 
 ```{r}
 #set seed
-set.seed(8)
+set.seed <- 8
 
 #Loading the data
 MA_d <- read.csv("Matrix_MetaAnalysis - Sheet2.csv") 
@@ -66,7 +68,7 @@ MA_d <- MA_d %>% select(
 )
 #Merge to get names of studies
 MA_d <- merge(MA_demo, MA_d, by = "Paper")
-MA_d$Group.1 <- 1:25
+MA_d$Group.1 <- 1:28
 #Impute missing values
 NA_list <- mice(MA_d, m = 100, print = FALSE)
 NA_d <- complete(NA_list, action = "long")
@@ -81,6 +83,12 @@ MA_d <- MA_d %>%
   )
   
 view(MA_d)
+#Write csv
+write.csv(MA_d, file = "MA_d.csv")
+```
+
+
+```{r}
 #formula
 MA_f <- bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
 
@@ -133,6 +141,17 @@ pp_check(MA_m1, nsamples = 100)
 summary(MA_m1)
 posterior_summary(MA_m1, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
 
+post.samples <- posterior_samples(MA_m1, c("^b", "^sd"))
+names(post.samples)
+names(post.samples) <- c("intercept", "pooled effect size","tau intercept", "tau")
+#random effects = how far does the "true" effect of each study vary from the estimated effect
+estimates <- ranef(MA_m1)
+estimates <- as.data.frame(estimates) %>% select(
+  "Effect size" = "Article.Estimate.Feedback",
+  "Estimated error" = "Article.Est.Error.Feedback",
+  "Q2.5" = "Article.Q2.5.Feedback",
+  "Q97.5" = "Article.Q97.5.Feedback"
+)
 #Chain checks
 color_scheme_set("viridis")
 mcmc_trace(MA_m1,
@@ -156,47 +175,82 @@ hyp_plot <- plot(hypothesis(MA_m1,"Feedback > 0"))
   +xlab("Change in rating"))
 ```
 
+
 ### Plotting results
 Forest plot
 ```{r}
 #Code for forest plots
+get_variables(MA_m1)
+MA_m1 %>% spread_draws(r_Article[Article,]) %>% head(10)
 #Creating dataframe with beta estimates for each paper
-study.draws <- spread_draws(MA_m1, r_Paper[Paper,], b_Feedback) %>% 
-  mutate(b_Feedback = r_Paper + b_Feedback)
-study.draws$Paper <- as.factor(study.draws$Paper) 
+study.draws <- tidybayes::spread_draws(MA_m1, r_Article[Article,], b_Feedback) %>% 
+  mutate(b_Feedback = r_Article + b_Feedback)
+study.draws$Article <- as.factor(study.draws$Article) 
 study.draws
 
+MA_d <- arrange(MA_d, (Article))
+article_list <- unique(MA_d$Article)
+estimates$Article <- article_list
+merge(estimates, MA_d, by ="Article")
+estimates$`Effect size` <- estimates$`Effect size`+0.17
 #Creating variable containing the pooled effect across studies
-pooled.effect.draws <- spread_draws(meta_model_post, b_Feedback) %>% 
+pooled.effect.draws <- spread_draws(post.samples, b_Feedback) %>% 
   mutate(Paper = "Pooled Effect")
 pooled.effect.draws
 
 #Binding individual and pooled estimates
-forest.data <- bind_rows(study.draws, pooled.effect.draws) %>% 
-   ungroup() %>%
-   mutate(Paper = reorder(Paper, b_Feedback))
+forest.data <- estimates %>% 
+   mutate(Article = reorder(Article, `Effect size`))
 forest.data
 
 #Summarizing estimates to mean and quantiles
-forest.data.summary <- group_by(forest.data, Paper) %>% 
-  mean_qi(b_Feedback)
+forest.data.summary <- group_by(forest.data, Article) %>% 
+  mean_qi(`Effect size`)
 forest.data.summary
 
+
+#Another point-wise estimate
+ggplot(estimates, aes(`Effect size`, Article)) +
+    geom_segment(aes(x = fixef(MA_m1)[2, 3], xend = fixef(MA_m1)[2, 4], y=Article, yend=Article)) +
+    geom_point()
+
 #Plot code
-ggplot(aes(b_Feedback, relevel(Paper, "Pooled Effect", after = Inf)), 
+ggplot(aes(`Effect size`, Article), 
        data = forest.data) +
-  geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
-  geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
-  geom_vline(xintercept = 0, color = "black", size = 1) +
-  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
-                      alpha = 0.8)+
+  geom_vline(xintercept = fixef(MA_m1)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(MA_m1)[2, 3:4], color = "grey", linetype = 2) +
+  geom_segment(aes(x = fixef(MA_m1)[2, 3], xend = fixef(MA_m1)[2, 4], y=Article, yend=Article)) +
   geom_pointintervalh(data = forest.data.summary, size = 1) +
   geom_text(data = mutate_if(forest.data.summary, is.numeric, round, 2),
-    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-  labs(x = "Standardized Mean Difference",
+    aes(label = glue("{`Effect size`} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+  labs(x = "Effect of change",
+       y = element_blank()) +
+  xlim(0.1, 0.25)+
+  theme_minimal()
+
+library(brmstools)
+forest(brm_out,
+       show_data = TRUE,
+       av_name = "Effect size")
+
+
+#Density Plot for pooled effect
+dens1 <- ggplot(aes(x = `pooled effect size`), data = post.samples) +
+  geom_density(fill = "lightblue", color = "lightblue", alpha = 0.7) +
+  geom_point(y = 0, x = mean(post.samples$`pooled effect size`)) +
+  labs(x = expression(italic(`pooled effect size`)),
        y = element_blank()) +
   theme_minimal()
 
+# Plot for tau
+dens2 <- ggplot(aes(x = tau), data = post.samples) +
+  geom_density(fill = "lightgreen", color = "lightgreen", alpha = 0.7) +
+  geom_point(y = 0, x = mean(post.samples$tau)) +
+    labs(x = expression(tau),
+       y = element_blank()) +
+  theme_minimal()
+
+dens1 + dens2 + plot_annotation(title = "Density plot of posterior samples")
 ```
 
 

@@ -1,0 +1,65 @@
+---
+title: "Exploratory analysis"
+author: "Eva Sahlholdt Hansen and Matilde Jacobsen"
+date: "5/19/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+```{r loading data}
+pacman::p_load(tidyverse, 
+               brms,
+               bayesplot,
+               viridis,#color pallette
+               stringr,
+               lme4,
+               lmerTest, 
+               rstatix,
+               tidybayes,
+               wesanderson, #color pallette
+)
+
+d <- sc_df_clean <- read_csv("sc_df_clean.csv")
+demo <- read_csv("Demographic responses.csv")
+
+```
+
+Type of feedback: low, medium, high
+```{r }
+#Creating different subsets for different types of feedback and new column for for 3 levels of feedback
+dLow <- subset(d, Feedback %in% c(-1,1,0))
+dLow$FeedbackType <- "low"
+dMedium <- subset(d, Feedback %in% c(2,-2))
+dMedium$FeedbackType <- "medium"
+dHigh <- subset(d, Feedback %in% c(3,-3))
+dHigh$FeedbackType <- "high"
+
+d <- rbind(dLow,dMedium,dHigh)
+```
+
+Anticonform: negative feedback & positive change, postitive feedback & negative change
+```{r}
+dAntiN <- subset(d, Feedback < 0 & Change > 0)
+dAntiN$Anti <- "negative_feedback"
+dAntiP <- subset(d, Feedback > 0 & Change < 0)
+dAntiP$Anti <- "positive_feedback"
+
+dAnti <- rbind(dAntiN,dAntiP)
+d2 <- d - dAnti
+d$AntiConform <- d %>%  transmute(
+  ifelse(Feedback < 0 & Change > 0, "negative",
+                         ifelse(Feedback > 0 & Change < 0, "positive",
+                                ifelse(FirstRating == SecondRating, "no_effect", "conform")))
+)
+
+
+```
+
+

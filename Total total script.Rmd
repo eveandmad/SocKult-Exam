@@ -1,5 +1,5 @@
 ---
-title: "Total total script"
+title: "Total script finished"
 author: "Eva Sahlholdt Hansen and Matilde Jacobsen"
 date: "5/15/2020"
 output: 
@@ -19,7 +19,7 @@ setwd("~/Desktop/SocKult exam")
 
 META ANALYSIS
 
-```{r - demography}
+```{r - demography 1}
 #Loading data
 meta_matrix <- read_csv("~/Desktop/SocKult exam/Meta-analysis matrix done.csv")
 
@@ -89,7 +89,7 @@ meta <- aggregate(imp1[,3:6] , by = list(imp1$.id),FUN = mean)
 meta <- cbind(meta, article)
 ```
 
-```{r - modelling (meta-analysis)}
+```{r - modelling (meta-analysis) 1}
 #Defining model
 meta_model <- 
   bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
@@ -143,7 +143,7 @@ summary(meta_model_post)
 posterior_summary(meta_model_post, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975))
 
 #Hypothesis testing 
-hypothesis(meta_model_post1, "Feedback > 0")
+hypothesis(meta_model_post, "Feedback > 0")
 ```
 
 ```{r - regression to the mean}
@@ -159,7 +159,7 @@ est_in_class <- as.data.frame(fixef(m_in_class))
 est_in_class[2,]
 ```
 
-```{r - visualizations}
+```{r - visualizations 1}
 #Model quality 
 
 #Combo plot (histogram + traceplot) (SM figure 2)
@@ -218,7 +218,7 @@ COMPARATIVE ANALYSIS
 sc_df <- read_csv("sc_df_clean.csv")
 ```
 
-```{r - demographics}
+```{r - demographics 2}
 #Loading data including demographic variables 
 demo_data <- read_csv("~/Desktop/SocKult exam/Peri-COVID data and analysis/Demographic responses.csv")
 
@@ -255,7 +255,7 @@ not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
 (100/38)*not_denmark2
 ```
 
-```{r - data wrangling}
+```{r - data wrangling 2}
 #Combining data for comparative analysis into one dataframe
 all_d <- rbind(simonsen_19, sc_df, cogsci_18)
 
@@ -273,7 +273,7 @@ allHigh$Feedback2 <- 2.5
 all_d <- rbind(allLow,allSame,allHigh)
 ```
 
-```{r - modelling}
+```{r - modelling 2}
 #Defining formula
 Combined_f1 <- bf(Change ~ 0 + FirstRating:Condition + Feedback:Condition + 
                          (1 + FirstRating + Feedback | ID) + 
@@ -345,7 +345,7 @@ hypothesis(Combined_m,"ConditionPeri:Feedback > 0")
 hypothesis(Combined_m,"ConditionPre:Feedback > 0")
 ```
 
-```{r - visualizations}
+```{r - visualizations 2}
 #Combo plot (histogram and trace plot) (SM figure 7)
 Combined_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 
@@ -424,7 +424,7 @@ ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)),
 
 SIMULATION 
 
-```{r}
+```{r - simulation}
 #Define simulation function 
 SimulateData <- function(samplesize,
                          Regression2Mean,
@@ -556,7 +556,7 @@ Reference2 <- C %>%
 
 INDIVIDUAL ANALYSIS OF NEW STUDY
 
-```{r - data wrangling and distraction duration}
+```{r - data wrangling and distraction duration 3}
 #Creating subsets of feedback type
 sc_df_low <- subset(sc_df, Feedback %in% c(-3,-2))
 sc_df_low$Feedback2 <- -2.5
@@ -593,7 +593,7 @@ mean(time$hours)
 sd(time$hours)
 ```
 
-```{r - modelling}
+```{r - modelling 3}
 #Model formula
 SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback + 
                          (1 + FirstRating + Feedback | Participant) + 
@@ -663,7 +663,7 @@ hypothesis(SocConformity_m,"Feedback > 0")
 
 ```
 
-```{r - visualizations}
+```{r - visualizations 3}
 #Combo plot (SM figure 10)
 SocConformity_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 

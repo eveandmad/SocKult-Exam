@@ -3,10 +3,10 @@ title: "Total total script"
 author: "Eva Sahlholdt Hansen and Matilde Jacobsen"
 date: "5/15/2020"
 output: 
-  md_document:
-    variant: markdown_github
-  editor_options: 
-    chunk_output_type: console
+    md_document:
+      variant: markdown_github
+    editor_options: 
+      chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -173,40 +173,40 @@ mcmc_rank <- mcmc_rank_overlay(meta_model_post,
 
 #Forest plot (SM figure 4)
 #Creating dataframe with beta estimates for each article
-study.draws_1 <- spread_draws(meta_model_post, r_Article[Article,], b_Feedback) %>% 
-  mutate(b_Feedback = r_Article + b_Feedback)
-study.draws_1$Article <- as.factor(study.draws_1$Article) 
+#study.draws_1 <- spread_draws(meta_model_post, r_Article[Article,], b_Feedback) %>% 
+  #mutate(b_Feedback = r_Article + b_Feedback)
+#study.draws_1$Article <- as.factor(study.draws_1$Article) 
 
-#Creating variable containing the pooled effect across studies
-pooled.effect.draws_1 <- spread_draws(meta_model_post, b_Feedback) %>% 
-  mutate(Article = "Pooled Effect")
-
-#Binding individual and pooled estimates
-forest.data_1 <- bind_rows(study.draws_1, pooled.effect.draws_1) %>% 
-   ungroup() %>%
-   mutate(Article = reorder(Article, b_Feedback))
-
-#Summarizing estimates (mean and quantiles)
-forest.data.summary_1 <- group_by(forest.data_1, Article) %>% 
-  mean_qi(b_Feedback)
-
-#Plot code
-ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
-       data = forest.data_1) +
-  geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
-  geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
-  geom_vline(xintercept = 0, color = "black", size = 1) +
-  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
-                      alpha = 0.8) +
-  geom_pointintervalh(data = forest.data.summary_1, size = 1) +
-  geom_text(data = mutate_if(forest.data.summary_1, is.numeric, round, 2),
-    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-  labs(x = "Change",
-       y = element_blank()) +
-  theme_minimal()
+# #Creating variable containing the pooled effect across studies
+# pooled.effect.draws_1 <- spread_draws(meta_model_post, b_Feedback) %>% 
+#   mutate(Article = "Pooled Effect")
+# 
+# #Binding individual and pooled estimates
+# forest.data_1 <- bind_rows(study.draws_1, pooled.effect.draws_1) %>% 
+#    ungroup() %>%
+#    mutate(Article = reorder(Article, b_Feedback))
+# 
+# #Summarizing estimates (mean and quantiles)
+# forest.data.summary_1 <- group_by(forest.data_1, Article) %>% 
+#   mean_qi(b_Feedback)
+# 
+# #Plot code
+# ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
+#        data = forest.data_1) +
+#   geom_vline(xintercept = fixef(meta_model_post)[2, 1], color = "grey", size = 1) +
+#   geom_vline(xintercept = fixef(meta_model_post)[2, 3:4], color = "grey", linetype = 2) +
+#   geom_vline(xintercept = 0, color = "black", size = 1) +
+#   geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
+#                       alpha = 0.8) +
+#   geom_pointintervalh(data = forest.data.summary_1, size = 1) +
+#   geom_text(data = mutate_if(forest.data.summary_1, is.numeric, round, 2),
+#     aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+#   labs(x = "Change",
+#        y = element_blank()) +
+#   theme_minimal()
 
 #Hypothesis plot (figure 2)
-(hypothesis_plot <- plot(hypothesis(meta_model_post1, "Feedback > 0"))[[1]]+ggtitle("Effect of group opinion on second rating"))
+(hypothesis_plot <- plot(hypothesis(meta_model_post, "Feedback > 0"))[[1]]+ggtitle("Effect of group opinion on second rating"))
 
 ```
 
@@ -215,7 +215,7 @@ COMPARATIVE ANALYSIS
 
 ```{r - loading new data}
 #Loading previously cleaned data
-sc_df <- read_csv("sc_df_clean.csv")
+sc_df2 <- read_csv("sc_df_clean.csv")
 ```
 
 ```{r - demographics comparative}
@@ -223,7 +223,7 @@ sc_df <- read_csv("sc_df_clean.csv")
 demo_data <- read_csv("Demographic responses.csv")
 
 #Merge with data included in analysis
-demo_data <- merge(demo_data,sc_df,by = "ID")
+demo_data <- merge(demo_data,sc_df2,by = "ID")
 
 #Include only one row per participant 
 demo_data <- demo_data[ !duplicated(demo_data$ID), ]
@@ -256,6 +256,9 @@ not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
 ```
 
 ```{r - data wrangling comparative}
+#Getting ready for rbind
+sc_df <- sc_df2 %>% select(-c(TimeStamp1, TimeStamp2, Participant))
+
 #Combining data for comparative analysis into one dataframe
 all_d <- rbind(simonsen_19, sc_df, cogsci_18)
 
@@ -387,38 +390,38 @@ summary(meta_model_post_2)
 
 #FOREST PLOT 2 (SM figure 8)
 
-#Creating dataframe with beta estimates for each article
-study.draws_2 <- spread_draws(meta_model_post_2, r_Article[Article,], b_Feedback) %>% 
-  mutate(b_Feedback = r_Article + b_Feedback)
-study.draws_2$Article <- as.factor(study.draws_2$Article) 
-
-#Creating variable containing the pooled effect across studies
-pooled.effect.draws_2 <- spread_draws(meta_model_post_2, b_Feedback) %>% 
-  mutate(Article = "Pooled Effect")
-
-#Binding individual and pooled estimates
-forest.data_2 <- bind_rows(study.draws_2, pooled.effect.draws_2) %>% 
-   ungroup() %>%
-   mutate(Article = reorder(Article, b_Feedback))
-
-#Summarizing estimates (mean and quantiles)
-forest.data.summary_2 <- group_by(forest.data_2, Article) %>% 
-  mean_qi(b_Feedback)
-
-#Plot code
-ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
-       data = forest.data_2) +
-  geom_vline(xintercept = fixef(meta_model_post_2)[2, 1], color = "grey", size = 1) +
-  geom_vline(xintercept = fixef(meta_model_post_2)[2, 3:4], color = "grey", linetype = 2) +
-  geom_vline(xintercept = 0, color = "black", size = 1) +
-  geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
-                      alpha = 0.8) +
-  geom_pointintervalh(data = forest.data.summary_2, size = 1) +
-  geom_text(data = mutate_if(forest.data.summary_2, is.numeric, round, 2),
-    aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
-  labs(x = "Change",
-       y = element_blank()) +
-  theme_minimal()
+# #Creating dataframe with beta estimates for each article
+# study.draws_2 <- spread_draws(meta_model_post_2, r_Article[Article,], b_Feedback) %>% 
+#   mutate(b_Feedback = r_Article + b_Feedback)
+# study.draws_2$Article <- as.factor(study.draws_2$Article) 
+# 
+# #Creating variable containing the pooled effect across studies
+# pooled.effect.draws_2 <- spread_draws(meta_model_post_2, b_Feedback) %>% 
+#   mutate(Article = "Pooled Effect")
+# 
+# #Binding individual and pooled estimates
+# forest.data_2 <- bind_rows(study.draws_2, pooled.effect.draws_2) %>% 
+#    ungroup() %>%
+#    mutate(Article = reorder(Article, b_Feedback))
+# 
+# #Summarizing estimates (mean and quantiles)
+# forest.data.summary_2 <- group_by(forest.data_2, Article) %>% 
+#   mean_qi(b_Feedback)
+# 
+# #Plot code
+# ggplot(aes(b_Feedback, relevel(Article, "Pooled Effect", after = Inf)), 
+#        data = forest.data_2) +
+#   geom_vline(xintercept = fixef(meta_model_post_2)[2, 1], color = "grey", size = 1) +
+#   geom_vline(xintercept = fixef(meta_model_post_2)[2, 3:4], color = "grey", linetype = 2) +
+#   geom_vline(xintercept = 0, color = "black", size = 1) +
+#   geom_density_ridges(fill = "blue", rel_min_height = 0.01, col = NA, scale = 1,
+#                       alpha = 0.8) +
+#   geom_pointintervalh(data = forest.data.summary_2, size = 1) +
+#   geom_text(data = mutate_if(forest.data.summary_2, is.numeric, round, 2),
+#     aes(label = glue("{b_Feedback} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+#   labs(x = "Change",
+#        y = element_blank()) +
+#   theme_minimal()
 
 ```
 
@@ -558,17 +561,17 @@ INDIVIDUAL ANALYSIS OF NEW STUDY
 
 ```{r - data wrangling and distraction duration own study}
 #Creating subsets of feedback type
-sc_df_low <- subset(sc_df, Feedback %in% c(-3,-2))
+sc_df_low <- subset(sc_df2, Feedback %in% c(-3,-2))
 sc_df_low$Feedback2 <- -2.5
-sc_df_same <- subset(sc_df, Feedback %in% c(-1, 0, 1))
+sc_df_same <- subset(sc_df2, Feedback %in% c(-1, 0, 1))
 sc_df_same$Feedback2 <- 0
-sc_df_high <- subset(sc_df, Feedback %in% c(3,2))
+sc_df_high <- subset(sc_df2, Feedback %in% c(3,2))
 sc_df_high$Feedback2 <- 2.5
 
 #Summary statistics of first and second rating for different types of feedback (SM table 5 - first 2 rows)
-sc_df %>% 
+sc_df2 %>% 
   get_summary_stats(FirstRating,type = "mean_sd")
-sc_df %>% 
+sc_df2 %>% 
   get_summary_stats(SecondRating,type = "mean_sd")
 
 #Summary statistics of change for different types of feedback (SM table 5 - last 3 rows)
@@ -584,13 +587,13 @@ sc_df_lh <- rbind(sc_df_low,sc_df_high)
 
 #Getting ditraction duration time 
 #Create column with time differences 
-time$time_dif <- time$TimeStamp2.y - time$TimeStamp1.y
-time %>% as.numeric(time$time_dif) 
+sc_df2$time_dif <- sc_df2$TimeStamp2 - sc_df2$TimeStamp1
+
 #Create column with time difference in hours
-time$hours <- time$time_dif/60
+sc_df2$hours <- sc_df2$time_dif/60
 #Mean and SD 
-mean(time$hours)
-sd(time$hours)
+mean(sc_df2$hours)
+sd(sc_df2$hours)
 ```
 
 ```{r - modelling own study}
@@ -601,7 +604,7 @@ SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback +
 
 #Get priors 
 get_prior(SocConformity_f1, 
-          d38_lh, 
+          sc_df_lh, 
           family = gaussian)
 
 #Define priors
@@ -616,7 +619,7 @@ SocConformity_prior <- c(
 #Prior model 
 SocConformity_m_prior <- brm(
   SocConformity_f1,
-  d38_lh,
+  sc_df_lh,
   family = gaussian,
   prior = SocConformity_prior,
   sample_prior = "only",
@@ -636,7 +639,7 @@ prior_check <- pp_check(SocConformity_m_prior, nsamples=100)
 #Posterior model
 SocConformity_m <- brm(
   SocConformity_f1,
-  d38_lh,
+  sc_df_lh,
   family = gaussian,
   prior = SocConformity_prior,
   sample_prior = T,
@@ -678,11 +681,11 @@ mcmc_rank_overlay(SocConformity_m,
 xx <- predict(SocConformity_m, summary=T)
 
 #Include predicted estimates in dataframe
-d38_lh <- cbind(d38_lh,xx)
-d38_lh$Participant <- as.factor(d38_lh$Participant)
+sc_df_lh <- cbind(sc_df_lh,xx)
+sc_df_lh$Participant <- as.factor(sc_df_lh$Participant)
 
 #Plot 
-ggplot(d38_lh) + 
+ggplot(sc_df_lh) + 
   geom_point(aes(Feedback,Change, color = ID, group=ID), show.legend=F) + 
   geom_smooth(method=lm, se=F, aes(Feedback,Change, color = ID), show.legend=F) +
   ggtitle("Regression of change on participant level")
@@ -693,7 +696,7 @@ X <- hypothesis(SocConformity_m, "Feedback > 0", group = "Participant", scope = 
 
 #Plot
 X$hypothesis %>%
-  left_join(distinct(d38_lh, Group = Participant)) %>% 
+  left_join(distinct(sc_df_lh, Group = Participant)) %>% 
   mutate(Participant = factor(Group), Conformity = Estimate) %>%
   ggplot(aes(Conformity, Participant)) +
   geom_errorbarh(aes(xmin = CI.Lower, xmax = CI.Upper)) +

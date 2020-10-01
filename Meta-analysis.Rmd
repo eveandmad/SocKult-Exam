@@ -1,0 +1,294 @@
+---
+title: "Meta-analysis"
+author: "Matilde"
+date: "4/5/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r loading data}
+pacman::p_load(tidyverse, 
+               meta,
+               brms,
+               bayesplot,
+               tidybayes,
+               ggplot2,
+               ggridges,
+               glue,
+               stringr,
+               forcats,
+               viridis,
+               readxl,
+               mice, #for missing values
+               patchwork,
+               brmstools
+)
+?patchwork
+#Study overview
+MA_demo <- read_excel("Matrix_MetaAnalysis.xlsx") %>% 
+  select("Paper" = "ArticleID",
+         "Article")
+
+View(MA_demo)
+
+```
+
+## Template
+
+### Define hypotheses / Describe variables
+There is a cumulative and consistent effect of SC across studies
+Outcome: 
+- Change (amount of change from the first rating)
+Predictors: 
+- Feedback (difference between first rating and peer feedback)
+Varying effect:
+= study ID
+
+### Identify your model[s] 
+
+### Assess model quality
+* Predictive prior checks
+* Divergences / Rhat / ESS
+* Prior/Posterior learning (betas and sds)
+* Model comparison
+* Predictive posterior checks
+
+```{r}
+#set seed
+set.seed <- 8
+
+#Loading the data
+MA_d <- read.csv("Matrix_MetaAnalysis - Sheet2.csv") 
+summary(MA_d)
+#Selecting columns of interest
+MA_d <- MA_d %>% select(
+  -c("LowM", "SameM", "HighM", "SecondRatingM", "X")
+)
+#Merge to get names of studies
+MA_d <- merge(MA_demo, MA_d, by = "Paper")
+MA_d$Group.1 <- 1:28
+#Impute missing values
+NA_list <- mice(MA_d, m = 100, print = FALSE)
+NA_d <- complete(NA_list, action = "long")
+NA_a <-aggregate(NA_d[,5:7] , by = list(NA_d$.id),FUN= mean)
+MA_d <- merge(MA_d, NA_a, by = "Group.1")
+MA_d <- MA_d %>% 
+  select("Paper",
+         "Article",
+         "Change" = "Change.y",
+         "ChangeSD" = "ChangeSD.y",
+         "Feedback" = "Feedback.y"
+  )
+  
+view(MA_d)
+#Write csv
+write.csv(MA_d, file = "MA_d.csv")
+```
+
+
+```{r}
+#formula
+MA_f <- bf(Change | se(ChangeSD) ~ 1 + Feedback + (1 + Feedback | Article))
+
+#get prior
+get_prior(MA_f, data = MA_d, family = gaussian())
+
+#set priors
+MA_prior <- c(
+              prior(normal(0,0.5), class = Intercept), #We expect mean of change to lie between -1 and 1
+              prior(normal(0,0.25), class = b), #We expect slope for change according to feedback approximately between -.5 and .5
+              prior(cauchy(0,0.1), class = sd), #Tau = between study variance of change
+              prior(lkj(5), class = cor) #The true correlation between feedback and change
+)
+
+#prior predictive check
+MA_m0 <- brm(
+  MA_f,
+  data = MA_d,
+  family = gaussian(),
+  prior = MA_prior,
+  sample_prior = "only",
+  chains = 4,
+  cores = 2,
+  iter = 4000,
+  control = list(adapt_delta = 0.99)
+)
+
+pp_check(MA_m0, nsamples = 100)
+
+#running the model with the data
+MA_m1 <- brm(
+  MA_f,
+  data = MA_d,
+  family = gaussian(),
+  prior = MA_prior,
+  sample_prior = T,
+  chains = 4,
+  cores = 2,
+  iter = 4000,
+  control = list(adapt_delta = 0.99)
+)
+
+pairs(MA_m1)
+
+#Posterior predictive check
+pp_check(MA_m1, nsamples = 100)
+
+
+#Model summaries
+summary(MA_m1)
+posterior_summary(MA_m1, pars = c("^b_", "^sd_"), probs = c(0.025, 0.975) )
+
+post.samples <- posterior_samples(MA_m1, c("^b", "^sd"))
+names(post.samples)
+names(post.samples) <- c("intercept", "pooled effect size","tau intercept", "tau")
+#random effects = how far does the "true" effect of each study vary from the estimated effect
+estimates <- ranef(MA_m1)
+estimates <- as.data.frame(estimates) %>% select(
+  "Effect size" = "Article.Estimate.Feedback",
+  "Estimated error" = "Article.Est.Error.Feedback",
+  "Q2.5" = "Article.Q2.5.Feedback",
+  "Q97.5" = "Article.Q97.5.Feedback"
+)
+#Chain checks
+color_scheme_set("viridis")
+mcmc_trace(MA_m1,
+           pars = c("b_Intercept", "b_Feedback", 
+           "sd_Article__Intercept", "sd_Article__Feedback",
+           "cor_Article__Intercept__Feedback")) + 
+  theme_classic()
+
+mcmc_rank <- mcmc_rank_overlay(MA_m1,
+                  pars = c("b_Intercept", "b_Feedback", 
+           "sd_Article__Intercept", "sd_Article__Feedback",
+           "cor_Article__Intercept__Feedback")) + theme_classic()
+
+MA_m1 %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
+
+#Hypothesis testing
+hypothesis(MA_m1,"Feedback > 0")
+hyp_plot <- plot(hypothesis(MA_m1,"Feedback > 0"))
+(hyp_plot [[1]]
+  +ggtitle("Effect of group opinion on second rating")
+  +xlab("Change in rating"))
+```
+
+
+### Plotting results
+Forest plot
+```{r}
+#Code for forest plots
+get_variables(MA_m1)
+MA_m1 %>% spread_draws(r_Article[Article,]) %>% head(10)
+#Creating dataframe with beta estimates for each paper
+study.draws <- tidybayes::spread_draws(MA_m1, r_Article[Article,], b_Feedback) %>% 
+  mutate(b_Feedback = r_Article + b_Feedback)
+study.draws$Article <- as.factor(study.draws$Article) 
+study.draws
+
+MA_d <- arrange(MA_d, (Article))
+article_list <- unique(MA_d$Article)
+estimates$Article <- article_list
+merge(estimates, MA_d, by ="Article")
+estimates$`Effect size` <- estimates$`Effect size`+0.17
+#Creating variable containing the pooled effect across studies
+pooled.effect.draws <- spread_draws(post.samples, b_Feedback) %>% 
+  mutate(Paper = "Pooled Effect")
+pooled.effect.draws
+
+#Binding individual and pooled estimates
+forest.data <- estimates %>% 
+   mutate(Article = reorder(Article, `Effect size`))
+forest.data
+
+#Summarizing estimates to mean and quantiles
+forest.data.summary <- group_by(forest.data, Article) %>% 
+  mean_qi(`Effect size`)
+forest.data.summary
+
+
+#Another point-wise estimate
+ggplot(estimates, aes(`Effect size`, Article)) +
+    geom_segment(aes(x = fixef(MA_m1)[2, 3], xend = fixef(MA_m1)[2, 4], y=Article, yend=Article)) +
+    geom_point()
+
+#Plot code
+ggplot(aes(`Effect size`, Article), 
+       data = forest.data) +
+  geom_vline(xintercept = fixef(MA_m1)[2, 1], color = "grey", size = 1) +
+  geom_vline(xintercept = fixef(MA_m1)[2, 3:4], color = "grey", linetype = 2) +
+  geom_segment(aes(x = fixef(MA_m1)[2, 3], xend = fixef(MA_m1)[2, 4], y=Article, yend=Article)) +
+  geom_pointintervalh(data = forest.data.summary, size = 1) +
+  geom_text(data = mutate_if(forest.data.summary, is.numeric, round, 2),
+    aes(label = glue("{`Effect size`} [{.lower}, {.upper}]"), x = Inf), hjust = "inward") +
+  labs(x = "Effect of change",
+       y = element_blank()) +
+  xlim(0.1, 0.25)+
+  theme_minimal()
+
+library(brmstools)
+forest(brm_out,
+       show_data = TRUE,
+       av_name = "Effect size")
+
+
+#Density Plot for pooled effect
+dens1 <- ggplot(aes(x = `pooled effect size`), data = post.samples) +
+  geom_density(fill = "lightblue", color = "lightblue", alpha = 0.7) +
+  geom_point(y = 0, x = mean(post.samples$`pooled effect size`)) +
+  labs(x = expression(italic(`pooled effect size`)),
+       y = element_blank()) +
+  theme_minimal()
+
+# Plot for tau
+dens2 <- ggplot(aes(x = tau), data = post.samples) +
+  geom_density(fill = "lightgreen", color = "lightgreen", alpha = 0.7) +
+  geom_point(y = 0, x = mean(post.samples$tau)) +
+    labs(x = expression(tau),
+       y = element_blank()) +
+  theme_minimal()
+
+dens1 + dens2 + plot_annotation(title = "Density plot of posterior samples")
+```
+
+
+
+### Report results
+* Model comparison
+* Estimates and hypothesis testing
+* Make sure to deal cautiously with interactions (e.g. plot!)
+* Make sure to let the reader know the effects of the estimates on the outcome scale (if generalized linear model)
+
+
+### Define your hypotheses
+People will conform to peer feedback, that is, they will change according to the feedback.
+
+### Report
+
+### Methods and Materials
+#### Participants
+
+#### Experimental setup
+In order to investigate whether implicit social conformity can be found beyond regression to the mean, we relied on the XNXN paradigm. DESCRIPTION OF THE PARADIGM.
+
+#### Statistical analysis
+The underlying causal diagram was formalized using Directed Acyclical Graphs in Figure XX. The diagram indicates the necessity to control for BLABLA in order to avoid BLABLA.
+In order to confirm the adequacy of such approach we set up a simulation of the data generating process and compared N statistical models in their ability to infer the true parameters.
+The simulation involved BLABLA
+The results indicated that the model including BLABLA could indeed recover the true parameter with high precision. See plot/table.
+We therefore constructed two models on the actual data from the experiment, in order to assess whether Feedback had an effect on the second rating.
+As outcome we chose Change (between own ratings) modeled relying on a Gaussian likelihood. In the first model we only used First Rating as a predictor, in the second we added Feedback. Both models had a full varying structure of the predictors, varying both by Participant and by Face stimulus.
+As priors we chose blabla and checked with prior predictive checks whether the scale of the expected outcomes was correct (e.g. avoiding impossible change values, such as + 100). See figure S1.
+We tested for model quality in terms of no divergences, Rhat < 1.05, effective samples above 200, posterior predictive checks, visual inspection of the markov chains (raw and ranked) and assessment as to whether the posterior had learned from the data (contrast with prior). Model quality was ensured, details are reported in the appendix.
+We compared the two models using loo based stacking weights model comparison (REF).
+If the model including feedback was reliably better than the model without feedback, we would then more specifically test our hypothesis of implicit conformity relying on evidence ratio, that is, the amount of posterior samples compatible with our hypothesis divided the amount of incompatible posterior samples.
+The modeling was performed relying on R 4.0.0, RStudio blalb, tidyverse, brms, Stan (REFS)
+
+### Results
+
+Model comparison revealed that no model was clearly better than the other, suggesting caution when testing hypotheses on our theoretically motivated model, which includes Feedback.
+As expected we saw a credible positive effect of feedback on the change in rating beyond regression to the mean (B = 0.02, SE= 0.01, 95% CIs blabla, ER = 27.). See figure blabla. 
+The effect was small, but quite consistent across participants, see figure blabla.
+For full details on the model see Table S1.

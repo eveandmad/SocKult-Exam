@@ -1,0 +1,191 @@
+---
+title: "Simulation for exam"
+author: "Matilde"
+date: "4/26/2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+
+```{r Simulating data}
+pacman::p_load(tidyverse, brms, lme4)
+
+
+
+set.seed <- 1981 # Defining a seed so the results are always the same
+samplesize <- 300 # Defining the amount of datapoints
+n <- 1000 # Defining number of simulations
+MaxScore <- 8 # Defining max rating
+MinScore <- 1 # Defining min rating
+
+## Regression to the mean of cogsci-data
+
+df <- read_csv("cogsci_clean.csv")
+  
+df2 <- subset(df, na.omit(Feedback))
+
+#What is the tendency to shrink values when there is no feedback 
+m0 <- lmer(SecondRating ~ 1 + FirstRating + (1 | ID), 
+          subset(df, is.na(Feedback)), REML=F)
+summary(m0)
+
+#True effect
+SocConformity_cog <- update(SocConformity_m, formula = SocConformity_f1, newdata = d)
+summary(SocConformity_cog)
+hypothesis(SocConformity_cog, "Feedback > 0")
+
+## Regression to the mean of own
+
+d <- read_csv("d38.csv")
+  
+d2 <- subset(d, na.omit(Feedback))
+
+#What is the tendency to shrink values when there is no feedback 
+m <- lmer(SecondRating ~ 1 + FirstRating + (1 + FirstRating | ID), 
+          subset(d, is.na(Feedback)), REML=F)
+summary(m)
+#Estimate of a correlation between first and second rating. 1 = perfectly correlated, the smaller it is the more regression to the mean
+ggplot(subset(d, is.na(Feedback)), aes(FirstRating,SecondRating)) + 
+  geom_point() +
+  geom_smooth(method=lm)
+
+Regression2Mean <- 0.66 # 1st to 2nd 0.59
+## Defining the correlation coefficients
+Conformity <- 0.5 # Defining the true correlation of feedback and change
+
+SimulateData <- function(samplesize,
+                         Regression2Mean,
+                         Conformity,
+                         MinScore = 1,
+                         MaxScore = 8){
+  
+  FirstRating <- round(runif(samplesize, MinScore, MaxScore), 0)
+  Feedback <- round(runif(samplesize, -3, 3), 0)
+  SecondRating <- round(Regression2Mean * FirstRating + Conformity * Feedback, 0)
+  SecondRating <- ifelse(SecondRating > MaxScore, MaxScore,ifelse(SecondRating < MinScore, MinScore, SecondRating))
+  Change <- SecondRating - FirstRating
+    
+  d1 <- data.frame(FirstRating, Feedback, SecondRating, Change) %>% 
+    subset(FirstRating + Feedback < MaxScore & FirstRating + Feedback > MinScore) %>%
+    mutate(
+      FirstRatingC <- FirstRating - 4.5,
+      SecondRatingC <- SecondRating - 4.5,
+    )
+  return(d1)
+}
+
+CalculateCorrelation <- function(simulations = n, 
+                                 samplesize,
+                                 Regression2Mean,
+                                 Conformity, 
+                                 MinScore = 1, 
+                                 MaxScore = 8){
+  for (i in c(1:n)){
+    
+    d <- SimulateData(samplesize, Regression2Mean, Conformity, MinScore, MaxScore)
+    
+    if (i == 1) {
+      RegressionEstimate <- cor(d$FirstRating, d$SecondRating)
+      ConformityEstimate <- cor(d$Feedback, d$Change)
+    } else {
+      RegressionEstimate <- c(RegressionEstimate, cor(d$FirstRating, d$SecondRating))
+      ConformityEstimate <- c(ConformityEstimate, cor(d$Feedback, d$Change))
+    }
+  }
+  Estimates <- data.frame(
+    ConformityEstimate = ifelse(is.na(ConformityEstimate),0,ConformityEstimate), 
+    RegressionEstimate = RegressionEstimate, 
+    RegressionTrue = Regression2Mean,
+    ConformityTrue = Conformity
+  )
+  return(Estimates)
+}
+
+
+C02 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = 0.02)
+C05 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = -0.05)
+C1 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = -0.1)
+C15 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = -0.17)
+C2 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = -0.2)
+C25 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.52,
+                                              Conformity = -0.25)
+
+
+
+C <- rbind(C02,
+          C05,
+          C1,
+          C15,
+          C2,
+          C25)
+
+
+Reference2 <- C %>%
+  group_by(RegressionTrue, ConformityTrue) %>%
+  summarise(
+    TrueRegression = mean(RegressionTrue),
+    EstimatedRegression = mean(RegressionTrue),
+    TrueConformity = mean(ConformityTrue),
+    EstimatedConformity = mean(ConformityEstimate))
+
+
+ggplot(ConformityEstimate, aes(ConformityEstimate)) +
+  geom_density() +
+  geom_vline(data = Reference, mapping = aes(xintercept = TrueConformity), color="red") +
+  geom_vline(data = Reference, mapping = aes(xintercept = EstimatedConformity), color="green") +
+  facet_grid(RegressionTrue ~ ConformityTrue) +
+  theme_classic()
+
+#Own data
+ConformityEstimateC02 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = 0.02)
+ConformityEstimateC05 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = -0.05)
+ConformityEstimateC1 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = -0.1)
+ConformityEstimateC15 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = -0.17)
+ConformityEstimateC2 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = -0.2)
+ConformityEstimateC25 <- CalculateCorrelation(n, samplesize, 
+                                              Regression2Mean = 0.66,
+                                              Conformity = -0.25)
+
+
+
+ConformityEstimate <- rbind(ConformityEstimateC02,
+                            ConformityEstimateC05,
+                            ConformityEstimateC1,
+                            ConformityEstimateC15,
+                            ConformityEstimateC2,
+                            ConformityEstimateC25)
+
+
+Reference <- ConformityEstimate %>%
+  group_by(RegressionTrue, ConformityTrue) %>%
+  summarise(
+    TrueRegression = mean(RegressionTrue),
+    EstimatedRegression = mean(RegressionTrue),
+    TrueConformity = mean(ConformityTrue),
+    EstimatedConformity = mean(ConformityEstimate))
+
+```
+
+

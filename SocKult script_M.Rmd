@@ -1,5 +1,4 @@
 ---
-=======
 title: "Simulation for exam"
 author: "Matilde"
 date: "4/26/2020"

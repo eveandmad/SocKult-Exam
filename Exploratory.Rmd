@@ -62,4 +62,68 @@ d$AntiConform <- d %>%  transmute(
 
 ```
 
+Modelling participants by waiting period for own study
+```{r}
+time <- read.csv("time.csv")
+df <- read.csv("Raw data/d38.csv")
+df_time <- merge(time, df, by = "ID")
+
+WaitConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback + 
+                         (1 + FirstRating + Feedback + hours | ID) + 
+                         (1 + FirstRating + Feedback | FaceID))
+
+get_prior(WaitConformity_f1, df_time, family = gaussian)
+
+WaitConformity_prior <- c(
+  prior(normal(0, 1), class = Intercept),
+  prior(normal(0, .3), class = b),
+  prior(normal(0, .3), class = sd),
+  prior(lkj(5), class = cor),
+  prior(normal(0,1), class = sigma)
+)
+
+WaitConformity_m_prior <- brm(
+  WaitConformity_f1,
+  df_time,
+  family = gaussian,
+  prior = WaitConformity_prior,
+  sample_prior = "only",
+  chains = 2,
+  cores = 2,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+
+prior_check <- pp_check(WaitConformity_m_prior, nsamples=100)
+
+(prior_check
+  +ggtitle("Prior predictive check"))
+
+WaitConformity_m <- brm(
+  WaitConformity_f1,
+  df_time,
+  family = gaussian,
+  prior = WaitConformity_prior,
+  sample_prior = T,
+  chains = 4,
+  cores = 2,
+  iter = 4000,
+  control = list(
+    adapt_delta = 0.99,
+    max_treedepth = 20
+  )
+)
+post_check <- pp_check(WaitConformity_m, nsamples=100)
+summary(WaitConformity_m)
+round(posterior_summary(WaitConformity_m, pars = c("^b_", "^sd_","^cor_"), probs = c(0.025, 0.975) ),3)
+```
+
+Exploratory regression of waiting time
+```{r}
+cogsci_clean <- read_csv("cogsci_clean.csv")
+
+
+```
 

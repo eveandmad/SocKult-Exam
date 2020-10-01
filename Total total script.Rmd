@@ -19,11 +19,9 @@ setwd("/Users/matilde/Desktop/AU/SocKult/Exam/SocKult-Exam-Colab")
 
 META ANALYSIS
 
-<<<<<<< HEAD
-```{r - demography MA}
-=======
+
 ```{r - demography 1}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Loading data
 meta_matrix <- read_csv("Meta-analysis matrix done.csv")
 
@@ -163,11 +161,8 @@ est_in_class <- as.data.frame(fixef(m_in_class))
 est_in_class[2,]
 ```
 
-<<<<<<< HEAD
-```{r - visualizations MA}
-=======
 ```{r - visualizations 1}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Model quality 
 
 #Combo plot (histogram + traceplot) (SM figure 2)
@@ -226,11 +221,9 @@ COMPARATIVE ANALYSIS
 sc_df2 <- read_csv("sc_df_clean.csv")
 ```
 
-<<<<<<< HEAD
-```{r - demographics comparative}
-=======
+
 ```{r - demographics 2}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Loading data including demographic variables 
 demo_data <- read_csv("Demographic responses.csv")
 
@@ -267,14 +260,21 @@ not_denmark2 <- sum(demo_data$`Country of residence`!="Denmark")
 (100/38)*not_denmark2
 ```
 
-<<<<<<< HEAD
-```{r - data wrangling comparative}
+```{r - demographics 2.2}
+pre_df <- rbind(simonsen_19, cogsci_18)
+
+#Counting ID's for sample size
+pre_dfID <- as.data.frame(unique(pre_df$ID))
+count(pre_dfID)
+
+
+```
+
+
+```{r - data wrangling 2}
 #Getting ready for rbind
 sc_df <- sc_df2 %>% select(-c(TimeStamp1, TimeStamp2, Participant))
 
-=======
-```{r - data wrangling 2}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
 #Combining data for comparative analysis into one dataframe
 all_d <- rbind(simonsen_19, sc_df, cogsci_18)
 
@@ -292,11 +292,9 @@ allHigh$Feedback2 <- 2.5
 all_d <- rbind(allLow,allSame,allHigh)
 ```
 
-<<<<<<< HEAD
-```{r - modelling comparative}
-=======
+
 ```{r - modelling 2}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Defining formula
 Combined_f1 <- bf(Change ~ 0 + FirstRating:Condition + Feedback:Condition + 
                          (1 + FirstRating + Feedback | ID) + 
@@ -368,11 +366,9 @@ hypothesis(Combined_m,"ConditionPeri:Feedback > 0")
 hypothesis(Combined_m,"ConditionPre:Feedback > 0")
 ```
 
-<<<<<<< HEAD
-```{r - visualizations comparative}
-=======
+
 ```{r - visualizations 2}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Combo plot (histogram and trace plot) (SM figure 7)
 Combined_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 
@@ -451,11 +447,8 @@ summary(meta_model_post_2)
 
 SIMULATION 
 
-<<<<<<< HEAD
 ```{r scrpit adapted from fusaroli 2020}
-=======
-```{r - simulation}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Define simulation function 
 SimulateData <- function(samplesize,
                          Regression2Mean,
@@ -587,11 +580,8 @@ Reference2 <- C %>%
 
 INDIVIDUAL ANALYSIS OF NEW STUDY
 
-<<<<<<< HEAD
-```{r - data wrangling and distraction duration own study}
-=======
 ```{r - data wrangling and distraction duration 3}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Creating subsets of feedback type
 sc_df_low <- subset(sc_df2, Feedback %in% c(-3,-2))
 sc_df_low$Feedback2 <- -2.5
@@ -628,11 +618,9 @@ mean(sc_df2$hours)
 sd(sc_df2$hours)
 ```
 
-<<<<<<< HEAD
-```{r - modelling own study}
-=======
+
 ```{r - modelling 3}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Model formula
 SocConformity_f1 <- bf(Change ~ 1 + FirstRating + Feedback + 
                          (1 + FirstRating + Feedback | Participant) + 
@@ -702,11 +690,9 @@ hypothesis(SocConformity_m,"Feedback > 0")
 
 ```
 
-<<<<<<< HEAD
-```{r - visualizations own study}
-=======
+
 ```{r - visualizations 3}
->>>>>>> 57724de4bed9175ae3cfd897e25f48a725fa6f15
+
 #Combo plot (SM figure 10)
 SocConformity_m %>% plot(combo = c("hist", "trace"), theme = theme_bw(base_size = 18), main = "Posterior distribution and trace plots" )
 
